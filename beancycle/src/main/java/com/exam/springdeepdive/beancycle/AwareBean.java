@@ -8,6 +8,6 @@ public class AwareBean implements BeanNameAware {
 
     @Override
     public void setBeanName(String name) {
-        System.out.println(":::: BeanNameAware: = " + name + ":::::");
+        System.out.println("[AwareBean(BeanNameAware)] = " + name);
     }
 }

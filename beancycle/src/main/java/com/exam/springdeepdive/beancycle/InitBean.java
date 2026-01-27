@@ -8,6 +8,6 @@ public class InitBean implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() {
-        System.out.println(":::: InitializingBean ::::");
+        System.out.println("[InitBean(InitializingBean)]");
     }
 }

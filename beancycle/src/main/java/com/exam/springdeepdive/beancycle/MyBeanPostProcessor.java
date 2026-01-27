@@ -9,7 +9,7 @@ public class MyBeanPostProcessor implements BeanPostProcessor {
     @Override
     public Object postProcessBeforeInitialization(Object bean, String name) {
         if (name.equals("lifecycleBean")) {
-            System.out.println("2. before init: " + name);
+            System.out.println("5. postProcessBeforeInitialization [MyBeanPostProcessor]");
         }
         return bean;
     }
@@ -17,7 +17,7 @@ public class MyBeanPostProcessor implements BeanPostProcessor {
     @Override
     public Object postProcessAfterInitialization(Object bean, String name) {
         if (name.equals("lifecycleBean")) {
-            System.out.println("4. after init: " + name);
+            System.out.println("8. postProcessAfterInitialization [MyBeanPostProcessor]");
         }
         return bean;
     }
