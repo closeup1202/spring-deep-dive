@@ -1,3 +1,5 @@
 rootProject.name = 'spring-deep-dive'
 
 include 'beancycle'
+include 'circulardependencies'
+include 'aop'
