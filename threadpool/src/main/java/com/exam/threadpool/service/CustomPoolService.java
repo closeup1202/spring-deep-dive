@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 public class CustomPoolService {
 
     public void testCustomPoolFlow() {
-        log.info("\n=== Testing Custom ThreadPoolExecutor Flow ===");
+        log.info("=== Testing Custom ThreadPoolExecutor Flow ===");
         
         // Core: 2, Max: 5, Queue: 10
         ThreadPoolExecutor executor = new ThreadPoolExecutor(

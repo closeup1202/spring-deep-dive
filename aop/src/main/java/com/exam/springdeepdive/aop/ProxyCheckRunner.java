@@ -26,7 +26,19 @@ public class ProxyCheckRunner implements ApplicationRunner {
         System.out.println("   Is Proxy? " + org.springframework.aop.support.AopUtils.isAopProxy(myService));
         System.out.println("   Is CGLIB? " + org.springframework.aop.support.AopUtils.isCglibProxy(myService));
         System.out.println("   Is JDK Dynamic? " + org.springframework.aop.support.AopUtils.isJdkDynamicProxy(myService));
+        
+        System.out.println("\n[Calling doSomething]");
         myService.doSomething();
+
+        System.out.println("\n[Calling hello]");
+        myService.hello("Spring");
+
+        System.out.println("\n[Calling boom]");
+        try {
+            myService.boom();
+        } catch (Exception e) {
+            System.out.println("Caught exception: " + e.getMessage());
+        }
 
         System.out.println("--------------------------------------------------");
 

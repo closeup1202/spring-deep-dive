@@ -24,7 +24,7 @@ public class ThreadPoolService {
     }
 
     public void testFixedThreadPool() throws InterruptedException {
-        log.info("\n=== Testing FixedThreadPool (Safe) ===");
+        log.info("=== Testing FixedThreadPool (Safe) ===");
         // 특징: 고정된 스레드 수(5개). 나머지는 큐(LinkedBlockingQueue)에서 대기.
         // 주의: 큐 사이즈가 무제한(Integer.MAX_VALUE)이라서 OOM 발생 가능성 있음.
         ExecutorService executor = Executors.newFixedThreadPool(5);
@@ -49,9 +49,8 @@ public class ThreadPoolService {
     }
 
     private void printPoolStatus(String name, ExecutorService executor) {
-        if (executor instanceof ThreadPoolExecutor) {
-            ThreadPoolExecutor tpe = (ThreadPoolExecutor) executor;
-            log.info("[{}] Pool Size: {}, Active Threads: {}, Queue Size: {}", 
+        if (executor instanceof ThreadPoolExecutor tpe) {
+            log.info("[{}] Pool Size: {}, Active Threads: {}, Queue Size: {}",
                     name, tpe.getPoolSize(), tpe.getActiveCount(), tpe.getQueue().size());
         }
     }
