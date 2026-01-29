@@ -25,3 +25,53 @@
 3.  **E2E Test (인수 테스트)**: 사용자 관점에서 전체 시나리오 검증. (RestAssured 등 활용)
 
 이 모듈에서는 **1번(Mockito)**과 **Controller 테스트(MockMvc)**에 집중했습니다.
+
+---
+
+## 부록 1: Mockito vs @MockBean vs MockMvc 완벽 정리
+
+이름이 비슷해서 헷갈리기 쉽지만, **출신과 역할**이 완전히 다릅니다.
+
+| 이름 | 소속 | 역할 | 주로 쓰는 곳 |
+| :--- | :--- | :--- | :--- |
+| **Mockito** | Mockito 라이브러리 | 자바 세상에서 가짜 객체(Mock)를 만들고 조종하는 도구 | 모든 테스트 |
+| **`@Mock`** | Mockito | 순수 자바 객체 Mock 생성 | **단위 테스트** (Service 등) |
+| **`@MockBean`** | Spring Boot | **스프링 Bean**을 Mock으로 교체하여 컨텍스트에 등록 | **통합/컨트롤러 테스트** |
+| **MockMvc** | Spring Framework | **가짜 HTTP 요청**을 보내는 브라우저 역할 | **컨트롤러 테스트** |
+
+---
+
+## 부록 2: 실무 Stubbing 패턴 BEST 5 (BDD 스타일)
+
+**1. 기본 값 반환**
+```java
+// findById 호출 시 member 반환
+given(repository.findById(1L)).willReturn(Optional.of(member));
+```
+
+**2. 예외 발생 (에러 테스트)**
+```java
+// save 호출 시 예외 발생
+given(repository.save(any())).willThrow(new RuntimeException("Error"));
+```
+
+**3. Void 메서드 예외 발생 (★주의★)**
+*   `void` 메서드는 `given()` 안에 넣을 수 없으므로 순서를 뒤집어야 합니다.
+```java
+// send 호출 시 예외 발생
+willThrow(new RuntimeException("Fail")).given(emailService).send(any());
+```
+
+**4. 아무 값이나 허용 (Argument Matchers)**
+```java
+// 어떤 Long 값이 들어오든 empty 반환
+given(repository.findById(anyLong())).willReturn(Optional.empty());
+```
+
+**5. 인자를 그대로 반환 (Answer)**
+*   JPA `save()`처럼 넣은 객체를 그대로 리턴받고 싶을 때 사용합니다.
+```java
+// 첫 번째 인자(Argument[0])를 그대로 리턴
+given(repository.save(any()))
+    .willAnswer(invocation -> invocation.getArgument(0));
+```
