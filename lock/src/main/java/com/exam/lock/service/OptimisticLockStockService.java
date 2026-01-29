@@ -3,8 +3,8 @@ package com.exam.lock.service;
 import com.exam.lock.domain.Stock;
 import com.exam.lock.repository.StockRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -13,23 +13,12 @@ public class OptimisticLockStockService {
 
     private final StockRepository stockRepository;
 
-    @Transactional
+    // 부모 트랜잭션이 있더라도 무조건 새로운 트랜잭션을 생성하여 실행 (재시도 시 안전성 확보)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void decrease(Long id, Long quantity) {
-        try {
-            // 조회 시점의 version과 수정 시점의 version을 비교하여
-            // 다르면 ObjectOptimisticLockingFailureException 발생
-            Stock stock = stockRepository.findByIdWithOptimisticLock(id)
-                    .orElseThrow();
-            stock.decrease(quantity);
-        } catch (ObjectOptimisticLockingFailureException e) {
-            // 충돌 발생 시 재시도 로직 (예: 100ms 대기 후 다시 시도)
-            // 실무에서는 재시도 횟수 제한, 백오프 전략 등을 추가해야 함
-            try {
-                Thread.sleep(100);
-                decrease(id, quantity);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            }
-        }
+        Stock stock = stockRepository.findByIdWithOptimisticLock(id)
+                .orElseThrow();
+        
+        stock.decrease(quantity);
     }
 }

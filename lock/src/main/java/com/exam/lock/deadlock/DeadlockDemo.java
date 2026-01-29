@@ -13,7 +13,7 @@ public class DeadlockDemo {
             synchronized (resource1) {
                 System.out.println("Thread 1: Locked resource 1");
 
-                try { Thread.sleep(100); } catch (Exception e) {}
+                try { Thread.sleep(100); } catch (Exception ignored) {}
 
                 System.out.println("Thread 1: Waiting for resource 2...");
                 synchronized (resource2) {
@@ -26,7 +26,7 @@ public class DeadlockDemo {
             synchronized (resource2) {
                 System.out.println("Thread 2: Locked resource 2");
 
-                try { Thread.sleep(100); } catch (Exception e) {}
+                try { Thread.sleep(100); } catch (Exception ignored) {}
 
                 System.out.println("Thread 2: Waiting for resource 1...");
                 synchronized (resource1) {

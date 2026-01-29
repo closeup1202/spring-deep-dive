@@ -43,8 +43,29 @@
 *   **비유**: 좁은 길에서 두 사람이 마주쳤을 때, 서로 비켜주려고 왼쪽/오른쪽으로 동시에 움직이다가 계속 제자리에 있는 상황.
 *   **해결**: 재시도 시 랜덤한 대기 시간(Jitter)을 부여합니다.
 
-## 4. 실습 가이드
-1.  **PessimisticLockStockService**: DB 락을 통해 안전하게 재고 감소.
-2.  **OptimisticLockStockService**: 버전 충돌 시 재시도 로직 동작 확인.
-3.  **RedissonLockStockService**: Redis 컨테이너 실행 필요. 분산 환경에서의 동시성 제어 확인.
-4.  **DeadlockDemo**: `triggerDeadlock()` 메서드를 호출하여 콘솔에서 스레드가 멈추는 현상 관찰.
+## 4. 실행 및 테스트 방법
+
+### 사전 준비
+*   **Redis 실행**: 로컬 환경에 Redis가 실행 중이어야 합니다. (기본 포트 6379)
+    *   Docker 사용 시: `docker run -d -p 6379:6379 redis`
+
+### API 테스트
+1.  **재고 생성**
+    *   `POST /stocks?productId=1&quantity=100`
+    *   응답: 생성된 Stock ID (예: 1)
+
+2.  **비관적 락 테스트**
+    *   `POST /stocks/1/decrease/pessimistic?quantity=1`
+    *   JMeter 등으로 동시에 여러 요청을 보내도 재고가 정확히 감소하는지 확인.
+
+3.  **낙관적 락 테스트**
+    *   `POST /stocks/1/decrease/optimistic?quantity=1`
+    *   충돌 발생 시 재시도 로직이 동작하여 결국 성공하는지 확인.
+
+4.  **분산 락 테스트**
+    *   `POST /stocks/1/decrease/redisson?quantity=1`
+    *   Redis를 통해 락이 제어되는지 확인.
+
+5.  **데드락 유발**
+    *   `GET /deadlock`
+    *   콘솔 로그를 확인하여 두 스레드가 서로를 기다리며 멈춰있는지 확인.
