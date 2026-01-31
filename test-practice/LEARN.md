@@ -15,7 +15,7 @@
 ## 2. MockMvc를 이용한 Controller 테스트 (`MemberControllerTest`)
 *   **목적**: 서버를 띄우지 않고 **HTTP 요청/응답** 처리 로직(파라미터 바인딩, JSON 변환, 상태 코드)을 검증합니다.
 *   **`@WebMvcTest`**: 웹 계층(Controller, Filter 등)만 로드하므로 `@SpringBootTest`보다 훨씬 빠릅니다.
-*   **`@MockBean`**: Spring Context에 가짜 Bean을 등록하여 Controller가 의존하는 Service를 대체합니다.
+*   **`@MockitoBean`**: Spring Context에 가짜 Bean을 등록하여 Controller가 의존하는 Service를 대체합니다. (Spring Boot 3.4+ 권장)
 *   **`mockMvc.perform(...)`**: 가상의 HTTP 요청을 보냅니다.
 *   **`andExpect(...)`**: 응답 상태 코드(`status()`)와 JSON 본문(`jsonPath`)을 검증합니다.
 
@@ -28,7 +28,7 @@
 
 ---
 
-## 부록 1: Mockito vs @MockBean vs MockMvc 완벽 정리
+## 부록 1: Mockito vs @MockitoBean vs MockMvc 완벽 정리
 
 이름이 비슷해서 헷갈리기 쉽지만, **출신과 역할**이 완전히 다릅니다.
 
@@ -36,8 +36,14 @@
 | :--- | :--- | :--- | :--- |
 | **Mockito** | Mockito 라이브러리 | 자바 세상에서 가짜 객체(Mock)를 만들고 조종하는 도구 | 모든 테스트 |
 | **`@Mock`** | Mockito | 순수 자바 객체 Mock 생성 | **단위 테스트** (Service 등) |
-| **`@MockBean`** | Spring Boot | **스프링 Bean**을 Mock으로 교체하여 컨텍스트에 등록 | **통합/컨트롤러 테스트** |
+| **`@MockitoBean`** | Spring Boot (3.4+) | **스프링 Bean**을 Mock으로 교체하여 컨텍스트에 등록 (최신 표준) | **통합/컨트롤러 테스트** |
+| **`@MockBean`** | Spring Boot (구버전) | `@MockitoBean`의 옛날 이름 (Deprecated 예정) | **통합/컨트롤러 테스트** |
 | **MockMvc** | Spring Framework | **가짜 HTTP 요청**을 보내는 브라우저 역할 | **컨트롤러 테스트** |
+
+### 요약
+*   **`@Mock`**: "나는 스프링 몰라. 그냥 자바 객체 가짜로 만들래." (가볍고 빠름)
+*   **`@MockitoBean`**: "나는 스프링 컨텍스트에 있는 진짜 Bean을 쫓아내고 그 자리에 앉을래." (무겁고 느림, `@MockBean`의 최신 버전)
+*   **`MockMvc`**: "나는 서버 안 띄우고 컨트롤러한테 요청 보낼래."
 
 ---
 
