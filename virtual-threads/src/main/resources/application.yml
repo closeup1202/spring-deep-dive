@@ -1,0 +1,8 @@
+spring:
+  threads:
+    virtual:
+      enabled: true # 이 설정 하나로 톰캣이 가상 스레드를 사용함
+server:
+  tomcat:
+    threads:
+      max: 200 # 가상 스레드 환경에서는 이 설정이 무의미해짐 (필요한 만큼 무한 생성)
