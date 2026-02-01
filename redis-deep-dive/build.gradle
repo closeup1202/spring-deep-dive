@@ -1,0 +1,38 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.exam'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-aop' // AOP 필수
+    
+    // Redisson: 분산 락을 쉽게 쓰기 위한 라이브러리
+    implementation 'org.redisson:redisson-spring-boot-starter:3.25.2' 
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    
+    // Embedded Redis (테스트용) - 운영체제 호환성 문제로 Testcontainers 권장하지만, 간단 실습 위해 Mocking하거나 로컬 Redis 가정
+    // 여기서는 Testcontainers 대신 로컬 Redis가 떠있다고 가정하거나, Mocking으로 진행
+}
+
+test {
+    useJUnitPlatform()
+}
