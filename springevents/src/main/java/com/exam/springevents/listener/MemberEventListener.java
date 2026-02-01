@@ -17,6 +17,11 @@ public class MemberEventListener {
     @EventListener
     public void handleNormal(MemberJoinedEvent event) {
         log.info("[Listener: Normal] Event received. (Thread: {})", Thread.currentThread().getName());
+        
+        if (event.name().contains("FailNormal")) {
+            log.error("[Listener: Normal] Exception occurred! This should rollback the transaction.");
+            throw new RuntimeException("Fail in Normal Listener");
+        }
     }
 
     // 2. [AFTER_COMMIT] 트랜잭션이 성공적으로 커밋된 후에만 실행 (실무 사용 빈도 1위)
@@ -25,6 +30,11 @@ public class MemberEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleAfterCommit(MemberJoinedEvent event) {
         log.info("[Listener: AFTER_COMMIT] Transaction Committed! Sending Welcome Email to {}. (Thread: {})", event.email(), Thread.currentThread().getName());
+        
+        if (event.name().contains("FailAfterCommit")) {
+            log.error("[Listener: AFTER_COMMIT] Exception occurred! But transaction should be already committed.");
+            throw new RuntimeException("Fail in AfterCommit Listener");
+        }
     }
 
     // 3. [AFTER_ROLLBACK] 트랜잭션이 롤백되었을 때 실행

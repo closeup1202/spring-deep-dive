@@ -1,49 +1,41 @@
-# Spring Events 심화 학습
+# Spring Events와 Transaction 심층 탐구
 
-스프링 이벤트와 트랜잭션의 연동(`@TransactionalEventListener`)을 실무 관점에서 깊이 있게 학습합니다.
+## 1. 개요
+Spring Event를 사용하면 서비스 간의 강한 결합을 끊을 수 있습니다.
+하지만 트랜잭션과 함께 사용할 때는 **"이벤트 리스너의 실행 시점"**과 **"예외 발생 시 롤백 여부"**를 정확히 제어해야 합니다.
 
-## 1. 핵심 개념: Transaction Phase
-이벤트 리스너가 트랜잭션의 어느 시점에 실행될지를 결정하는 옵션입니다.
+## 2. 핵심 개념
 
-| Phase | 설명 | 실무 활용 예시 |
-| :--- | :--- | :--- |
-| **AFTER_COMMIT** (기본값) | 트랜잭션이 성공적으로 **커밋된 후** 실행 | 이메일/알림톡 발송, 타 시스템 API 호출 (가장 많이 사용) |
-| **AFTER_ROLLBACK** | 트랜잭션이 **롤백된 후** 실행 | 실패 로그 기록, 관리자 알림, 임시 리소스 정리 |
-| **BEFORE_COMMIT** | 트랜잭션 **커밋 직전** 실행 | 데이터 최종 검증 (거의 사용 안 함) |
-| **AFTER_COMPLETION** | 커밋/롤백 상관없이 **종료 후** 실행 | 리소스 반납 (Finally 블록과 유사) |
+### `@EventListener` (기본)
+- **실행 시점:** 이벤트를 발행(`publishEvent`)한 그 즉시 실행됩니다. (동기)
+- **트랜잭션:** 발행한 쪽의 트랜잭션에 참여합니다.
+- **위험성:** 리스너에서 예외가 발생하면, **발행한 쪽의 트랜잭션까지 롤백**됩니다.
+    - 예: 회원가입 완료 -> 가입 축하 메일 발송(리스너) 실패 -> **회원가입 롤백** (???)
 
-## 2. 실무 패턴 (Best Practices)
+### `@TransactionalEventListener`
+- **실행 시점:** 트랜잭션의 특정 단계에 실행을 예약합니다.
+- **옵션 (`phase`):**
+    - `AFTER_COMMIT` (기본값): 트랜잭션이 **성공적으로 커밋된 후**에 실행됩니다.
+    - `AFTER_ROLLBACK`: 트랜잭션이 롤백된 후에 실행됩니다.
+    - `BEFORE_COMMIT`: 커밋 직전에 실행됩니다.
+- **안전성:** `AFTER_COMMIT` 단계에서 예외가 발생해도, 원본 트랜잭션은 이미 커밋되었으므로 **롤백되지 않습니다.**
 
-### 패턴 1: 비즈니스 로직과 후처리 분리 (AFTER_COMMIT)
-*   **상황**: 회원가입(Core) 후 가입 환영 이메일(Sub)을 보내야 함.
-*   **문제**: 이메일 발송이 실패했다고 해서 회원가입까지 롤백되면 안 됨. 반대로, 회원가입이 DB 에러로 실패했는데 이메일이 발송되면 안 됨.
-*   **해결**: `@TransactionalEventListener(phase = AFTER_COMMIT)` 사용.
-    *   회원가입 트랜잭션이 커밋된 후에만 리스너가 실행됨.
-    *   리스너에서 예외가 발생해도 이미 커밋된 회원가입은 안전함.
+## 3. 실습 내용
 
-### 패턴 2: 비동기 처리 (Async + AFTER_COMMIT)
-*   **상황**: 이메일 발송 서버가 느려서 응답이 3초 걸림.
-*   **해결**: `@Async`와 함께 사용.
-    *   메인 트랜잭션 스레드는 커밋 후 즉시 응답을 반환하고, 별도의 스레드에서 이메일을 발송함.
-    *   사용자 경험(UX) 향상.
+### 시나리오 1: 일반 리스너의 위험성
+1. `MemberService`가 회원을 저장하고 이벤트를 발행합니다.
+2. `@EventListener`가 이벤트를 받아서 예외를 던집니다.
+3. 결과: `MemberService`의 트랜잭션이 롤백되어 회원 정보가 사라집니다.
 
-### 패턴 3: 실패 감지 (AFTER_ROLLBACK)
-*   **상황**: 결제 트랜잭션이 실패했을 때 운영팀 슬랙으로 알림을 보내고 싶음.
-*   **해결**: `phase = AFTER_ROLLBACK` 사용.
+### 시나리오 2: 트랜잭션 리스너의 안전성
+1. `MemberService`가 회원을 저장하고 이벤트를 발행합니다.
+2. 트랜잭션이 커밋됩니다. (DB 저장 확정)
+3. `@TransactionalEventListener(phase = AFTER_COMMIT)`가 실행되어 예외를 던집니다.
+4. 결과: 예외는 발생하지만, 회원 정보는 DB에 안전하게 남아있습니다.
 
-## 3. 실습 시나리오 (`EventRunner` 실행 결과 확인)
+## 4. 실행 방법
+`src/test/java/com/exam/springevents/service/EventTransactionTest.java`를 실행하여 두 가지 케이스를 검증하세요.
 
-### Scenario 1: Transaction Success (Commit)
-1.  `[Service]` 로직 수행 및 이벤트 발행
-2.  `[Listener: Normal]` 즉시 실행 (동기)
-3.  `[Listener: BEFORE_COMMIT]` 커밋 직전 실행
-4.  **DB Commit 발생**
-5.  `[Listener: AFTER_COMMIT]` 실행 (이메일 발송)
-6.  `[Listener: Async + AFTER_COMMIT]` 별도 스레드에서 실행
-
-### Scenario 2: Transaction Failure (Rollback)
-1.  `[Service]` 로직 수행 및 이벤트 발행
-2.  `[Listener: Normal]` 즉시 실행 (주의: 여기서 예외 터지면 롤백 원인이 될 수 있음)
-3.  **Exception 발생 -> Rollback**
-4.  `[Listener: AFTER_ROLLBACK]` 실행 (실패 알림)
-5.  *`AFTER_COMMIT` 리스너들은 실행되지 않음!*
+## 5. 심화: 리스너에서 DB 작업을 해야 한다면?
+`AFTER_COMMIT` 단계에서는 이미 트랜잭션이 끝났거나, 커밋된 상태라 쓰기 작업이 불가능할 수 있습니다.
+이때는 리스너 메서드에 `@Transactional(propagation = Propagation.REQUIRES_NEW)`를 붙여서 **새로운 트랜잭션**을 시작해야 합니다.
