@@ -1,0 +1,18 @@
+dependencies {
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'org.slf4j:slf4j-api'
+    
+    // AWS SDK for S3 Backup
+    implementation platform('software.amazon.awssdk:bom:2.41.21')
+    implementation 'software.amazon.awssdk:s3'
+
+    implementation project(':core')
+    implementation project(':spring')
+
+    testImplementation 'org.testcontainers:testcontainers:1.21.4'
+    testImplementation 'org.testcontainers:kafka:1.21.4'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
+}

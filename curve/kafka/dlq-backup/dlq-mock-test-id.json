@@ -1,0 +1,1 @@
+{"eventId":{"value":"dlq-mock-test-id"},"eventType":{"value":"TEST_ORDER_CREATED"},"severity":"INFO","metadata":{"source":null,"actor":null,"trace":null,"schema":null,"tags":{}},"payload":{"orderId":"dlq-order-1","productName":"dlq-test-data","amount":100,"eventType":{"value":"TEST_ORDER_CREATED"}},"occurredAt":1769692207.922087400,"publishedAt":1769692207.922087400}
