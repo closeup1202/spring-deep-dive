@@ -69,6 +69,7 @@
 
 ### 로깅 & 모니터링
 - **logging-strategy** - MDC, Structured Logging (JSON)
+- **actuator-deep-dive** - 헬스체크, 메트릭, Prometheus 연동
 
 ### 안정성 & 장애 대응
 - **circuit-breaker-pattern** - Circuit Breaker로 장애 전파 방지
@@ -115,10 +116,11 @@
 ### 🔴 고급: 프로덕션 환경 대비 (3-4개월)
 ```
 11. logging-strategy ⭐ (최우선)
-12. graceful-shutdown
-13. circuit-breaker-pattern
-14. virtual-threads
-15. curve/kafka → curve/spring
+12. actuator-deep-dive ⭐ (최우선)
+13. graceful-shutdown
+14. circuit-breaker-pattern
+15. virtual-threads
+16. curve/kafka → curve/spring
 ```
 
 ---
@@ -185,8 +187,7 @@ module-name/
 ### 현재 프로젝트에 없는 영역 (향후 추가 예정)
 
 #### 🔵 Observability (관측 가능성)
-- [ ] `micrometer-prometheus` - 메트릭 수집과 Prometheus 연동
-- [ ] `actuator-deep-dive` - 헬스체크, 메트릭 엔드포인트
+- [x] `actuator-deep-dive` - 헬스체크, 메트릭 엔드포인트 ✅ 완료
 - [ ] `distributed-tracing` - Zipkin/OpenTelemetry 분산 추적
 
 #### 🔵 Cloud Native
