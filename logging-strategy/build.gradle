@@ -1,0 +1,8 @@
+// 플러그인은 루트 프로젝트에서 이미 적용됨
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Logstash Encoder for JSON Logging
+    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+}

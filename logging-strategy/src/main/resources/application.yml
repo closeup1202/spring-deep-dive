@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: logging-strategy
+
+  # 기본 프로파일 설정
+  profiles:
+    active: dev
+
+server:
+  port: 8080
+
+# Logging 설정 (application.yml에서도 가능하지만, logback-spring.xml이 더 세밀한 제어 가능)
+logging:
+  level:
+    root: INFO
+    com.example.logging: DEBUG
+  pattern:
+    # MDC 값을 로그 패턴에 포함
+    console: "%d{HH:mm:ss.SSS} [%thread] [%X{traceId:-NO_TRACE}] [%X{userId:-anonymous}] %-5level %logger{36} - %msg%n"
+
+---
+# JSON 로깅 프로파일 (ELK Stack 연동 시 사용)
+spring:
+  config:
+    activate:
+      on-profile: json
+
+logging:
+  level:
+    root: INFO
+
+---
+# 프로덕션 프로파일
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  level:
+    root: WARN
+    com.example.logging: INFO
