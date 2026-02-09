@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  # Zipkin - 분산 추적 시각화
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    environment:
+      - STORAGE_TYPE=mem
+    networks:
+      - tracing-network
+
+networks:
+  tracing-network:
+    driver: bridge

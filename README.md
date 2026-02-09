@@ -70,6 +70,7 @@
 ### 로깅 & 모니터링
 - **logging-strategy** - MDC, Structured Logging (JSON)
 - **actuator-deep-dive** - 헬스체크, 메트릭, Prometheus 연동
+- **distributed-tracing** - Micrometer Tracing, Zipkin 분산 추적
 
 ### 안정성 & 장애 대응
 - **circuit-breaker-pattern** - Circuit Breaker로 장애 전파 방지
@@ -188,7 +189,7 @@ module-name/
 
 #### 🔵 Observability (관측 가능성)
 - [x] `actuator-deep-dive` - 헬스체크, 메트릭 엔드포인트 ✅ 완료
-- [ ] `distributed-tracing` - Zipkin/OpenTelemetry 분산 추적
+- [x] `distributed-tracing` - Micrometer Tracing, Zipkin 분산 추적 ✅ 완료
 
 #### 🔵 Cloud Native
 - [ ] `spring-cloud-config` - 중앙 설정 관리

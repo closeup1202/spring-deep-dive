@@ -28,7 +28,7 @@ public class OrderController {
     public Map<String, Object> createOrder(@RequestBody Map<String, Object> orderRequest) {
         String orderId = "ORDER-" + System.currentTimeMillis();
         String category = (String) orderRequest.getOrDefault("category", "general");
-        Double amount = ((Number) orderRequest.getOrDefault("amount", 0)).doubleValue();
+        double amount = ((Number) orderRequest.getOrDefault("amount", 0)).doubleValue();
 
         log.info("Creating order: {}", orderId);
 

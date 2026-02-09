@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: service-a
+
+server:
+  port: 8080
+
+# Logging with traceId
+logging:
+  level:
+    root: INFO
+    com.example.servicea: DEBUG
+  pattern:
+    # traceId와 spanId를 로그에 자동 포함
+    console: "%d{HH:mm:ss.SSS} [%thread] [%X{traceId}/%X{spanId}] %-5level %logger{36} - %msg%n"
+
+# Actuator 설정
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  tracing:
+    # 샘플링 확률 (1.0 = 100%, 모든 요청 추적)
+    sampling:
+      probability: 1.0
+
+  # Zipkin 설정
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+# Info 엔드포인트
+info:
+  app:
+    name: Service A (Order Gateway)
+    description: Distributed Tracing Demo - Frontend Service
+    version: 1.0.0

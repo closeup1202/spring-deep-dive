@@ -1,0 +1,16 @@
+// 플러그인은 루트 프로젝트에서 이미 적용됨
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Micrometer Tracing (Spring Boot 3.x)
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+    implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+
+    // Prometheus metrics
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    // WebClient for service-to-service communication
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+}
