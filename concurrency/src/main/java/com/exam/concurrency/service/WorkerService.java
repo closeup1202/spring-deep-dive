@@ -36,7 +36,7 @@ public class WorkerService {
                     Thread.sleep(1000); // 작업 시뮬레이션
 
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    log.error(e.getMessage(), e);
                 } finally {
                     // 2. 중요: ThreadLocal 정리
                     UserContextHolder.clear();
