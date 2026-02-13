@@ -1,5 +1,7 @@
 package com.exam.concurrency;
 
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -16,6 +18,7 @@ public class VolatileExample {
     /**
      * 시나리오 1: volatile 없이 플래그 사용 (문제 발생 가능)
      */
+    @Getter
     static class WithoutVolatile {
         private boolean running = true; // volatile 없음
 
@@ -37,14 +40,12 @@ public class VolatileExample {
             running = false; // 메인 스레드가 변경
         }
 
-        public boolean isRunning() {
-            return running;
-        }
     }
 
     /**
      * 시나리오 2: volatile로 플래그 사용 (올바른 동작)
      */
+    @Getter
     static class WithVolatile {
         private volatile boolean running = true; // volatile 사용
 
@@ -65,14 +66,12 @@ public class VolatileExample {
             running = false;
         }
 
-        public boolean isRunning() {
-            return running;
-        }
     }
 
     /**
      * 시나리오 3: volatile은 복합 연산에 대한 원자성을 보장하지 않음
      */
+    @Getter
     static class VolatileNotAtomic {
         private volatile int counter = 0;
 
@@ -85,9 +84,6 @@ public class VolatileExample {
             counter++; // NOT thread-safe!
         }
 
-        public int getCounter() {
-            return counter;
-        }
     }
 
     /**
@@ -142,28 +138,15 @@ public class VolatileExample {
      * Java에서 long과 double은 64비트이고,
      * volatile 없이는 읽기/쓰기가 원자적이지 않을 수 있음 (32비트씩 2번)
      */
+    @Setter
+    @Getter
     static class VolatileLongDouble {
-        private volatile long volatileLong = 0L;
-        private long normalLong = 0L;
-
         // volatile long은 읽기/쓰기가 원자적
-        public void setVolatileLong(long value) {
-            volatileLong = value;
-        }
-
-        public long getVolatileLong() {
-            return volatileLong;
-        }
-
+        private volatile long volatileLong = 0L;
         // 일반 long은 2개의 32비트 연산으로 나뉠 수 있음
         // 한 스레드가 쓰는 중에 다른 스레드가 읽으면 이상한 값을 볼 수 있음
-        public void setNormalLong(long value) {
-            normalLong = value;
-        }
+        private long normalLong = 0L;
 
-        public long getNormalLong() {
-            return normalLong;
-        }
     }
 
     /**
