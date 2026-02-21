@@ -24,7 +24,6 @@ public class CustomPoolService {
 
         // 작업 16개 투입 (Max 5 + Queue 10 = 15개 처리 가능, 1개는 Reject 예상)
         for (int i = 1; i <= 16; i++) {
-            int taskId = i;
             try {
                 executor.submit(() -> {
                     try {
@@ -33,9 +32,9 @@ public class CustomPoolService {
                         e.printStackTrace();
                     }
                 });
-                log.info("Task {} submitted. Pool: {}, Queue: {}", taskId, executor.getPoolSize(), executor.getQueue().size());
+                log.info("Task {} submitted. Pool: {}, Queue: {}", i, executor.getPoolSize(), executor.getQueue().size());
             } catch (RejectedExecutionException e) {
-                log.error("Task {} REJECTED! Pool: {}, Queue: {}", taskId, executor.getPoolSize(), executor.getQueue().size());
+                log.error("Task {} REJECTED! Pool: {}, Queue: {}", i, executor.getPoolSize(), executor.getQueue().size());
             }
         }
         
