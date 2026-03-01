@@ -3,6 +3,7 @@ package com.exam.mvc.resolver;
 import com.exam.mvc.annotation.LoginUser;
 import com.exam.mvc.domain.UserSession;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;
@@ -27,8 +28,8 @@ public class LoginUserArgumentResolver implements HandlerMethodArgumentResolver 
 
     // 2. 실제 파라미터에 들어갈 객체를 생성하여 반환
     @Override
-    public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-                                  NativeWebRequest webRequest, WebDataBinderFactory binderFactory) throws Exception {
+    public Object resolveArgument(@NonNull MethodParameter parameter, ModelAndViewContainer mavContainer,
+                                  NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
         
         HttpServletRequest request = (HttpServletRequest) webRequest.getNativeRequest();
         

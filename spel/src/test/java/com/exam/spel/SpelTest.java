@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
+import org.springframework.expression.spel.SpelEvaluationException;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.SimpleEvaluationContext;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
@@ -41,7 +42,7 @@ class SpelTest {
         Expression expression = parser.parseExpression("new String('Hello World')");
         
         assertThatThrownBy(() -> expression.getValue(context))
-                .isInstanceOf(org.springframework.expression.spel.SpelEvaluationException.class);
+                .isInstanceOf(SpelEvaluationException.class);
     }
 
     @Test
@@ -59,21 +60,7 @@ class SpelTest {
         assertThat(name).isEqualTo("John");
     }
 
-    static class Person {
-        private String name;
-        private int age;
+    record Person(String name, int age) {
 
-        public Person(String name, int age) {
-            this.name = name;
-            this.age = age;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public int getAge() {
-            return age;
-        }
     }
 }

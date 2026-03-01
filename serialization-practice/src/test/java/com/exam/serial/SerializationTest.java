@@ -42,6 +42,7 @@ class SerializationTest {
         String name = "Hong Gil Dong";
         int age = 30;
         String phone = "010-1234-5678";
+
         User user = new User(name, age, phone);
 
         // When 1: JSON 직렬화
