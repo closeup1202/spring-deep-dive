@@ -161,6 +161,47 @@ List<Team> findAllWithMembers();
 > - `@OneToMany` (컬렉션) → `@BatchSize` 또는 별도 쿼리 분리를 권장
 >   (컬렉션 Fetch Join은 페이징과 함께 사용 불가 — Hibernate가 메모리에서 페이징 처리하여 OOM 위험)
 
+---
+
+### 안전한 페이징 패턴 (실무 표준)
+
+컬렉션 Fetch Join + 페이징을 동시에 사용하면 Hibernate가 메모리에서 전체 데이터를 올린 후 페이징하므로 OOM 위험이 있습니다. 실무에서 권장하는 대안은 3가지입니다.
+
+**패턴 1: ID 페이징 + IN Fetch Join (가장 추천)**
+
+```java
+// 1단계: ID만 페이징 조회 (DB 레벨 페이징 정상 작동)
+SELECT t.id FROM Team t  → pageable 적용
+
+// 2단계: 조회된 ID로 컬렉션 Fetch Join
+SELECT DISTINCT t FROM Team t JOIN FETCH t.members WHERE t.id IN :ids
+```
+
+✔ DB 페이징 정상 작동 | ✔ 컬렉션 Fetch Join 가능 | ✔ 가장 안전
+
+**패턴 2: N쪽에서 조회 (N:1 Fetch Join)**
+
+```java
+// Member(N) 기준으로 조회하면 중복 없이 페이징 가능
+SELECT m FROM Member m JOIN FETCH m.team
+```
+
+✔ 중복 없음 | ✔ 페이징 가능 | ✔ 매우 안전 (단, 설계 방향이 뒤집힘)
+
+**패턴 3: @BatchSize 사용**
+
+```java
+@BatchSize(size = 100)
+private List<Member> members;
+
+// 또는 글로벌 설정
+// hibernate.default_batch_fetch_size=100
+```
+
+N+1 → 1+1 구조로 개선. 페이징과도 안전하게 함께 사용 가능.
+
+---
+
 ## 3. 벌크 연산의 함정 (@Modifying)
 `UPDATE`나 `DELETE` 쿼리를 JPQL로 직접 날릴 때 주의해야 합니다.
 벌크 연산은 영속성 컨텍스트를 무시하고 **DB에 직접 쿼리**를 날립니다.
@@ -178,11 +219,80 @@ List<Team> findAllWithMembers();
 - **동적 쿼리:** `BooleanExpression`을 사용하여 `where` 조건을 레고 조립하듯 만들 수 있습니다. (`null`이면 조건 무시)
 - **DTO 조회:** 엔티티 전체를 조회하지 않고, `Projections`를 사용하여 필요한 필드만 조회하여 성능을 최적화합니다.
 
+### DTO 프로젝션이 엔티티 조회보다 빠른 이유
+
+| 항목 | 엔티티 조회 | DTO 프로젝션 |
+|------|------------|-------------|
+| 영속성 컨텍스트 등록 | O (스냅샷 저장) | X |
+| Dirty Checking | O | X |
+| 조회 컬럼 수 | 전체 | 필요한 것만 |
+| 1:N 페이징 문제 | 있음 | 없음 (SQL 직접 제어) |
+
+```java
+// JPQL new 문법
+SELECT new com.example.TeamDto(t.id, t.name) FROM Team t
+
+// QueryDSL Projections
+queryFactory.select(Projections.constructor(TeamDto.class, team.id, team.name))
+```
+
+**DTO를 써야 하는 경우**
+- 조회 전용 API (수정 불필요)
+- 대량 데이터 조회 / 통계·검색 화면
+- 1:N 컬렉션 페이징이 필요한 경우
+
 ### Cascade & OrphanRemoval
 - **Aggregate Root:** 부모 엔티티(`Order`)가 자식 엔티티(`OrderItem`)의 생명주기를 관리합니다.
 - `CascadeType.ALL`: 부모 저장/삭제 시 자식도 같이 저장/삭제.
 - `orphanRemoval = true`: 부모의 리스트에서 자식을 제거하면 DB에서도 삭제됨.
 
-## 6. 실습 내용
+## 6. OSIV (Open Session In View)
+
+Spring Boot 기본값: `spring.jpa.open-in-view=true`
+
+HTTP 요청 시작부터 응답 완료까지 영속성 컨텍스트(DB 커넥션)를 유지하는 설정입니다.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  HTTP Request                                               │
+│  ┌─────────┐   ┌─────────┐   ┌──────────┐   ┌──────────┐  │
+│  │ Filter  │──▶│Controller│──▶│ Service  │──▶│   View   │  │
+│  └─────────┘   └─────────┘   └──────────┘   └──────────┘  │
+│  ←────────────── 영속성 컨텍스트 유지 (OSIV ON) ──────────▶  │
+│                              ←── 트랜잭션 ──▶               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| 구분 | OSIV ON (기본값) | OSIV OFF (실무 권장) |
+|------|-----------------|---------------------|
+| Lazy 로딩 | Controller에서도 가능 | 트랜잭션 안에서만 가능 |
+| DB 커넥션 점유 | 응답 완료까지 (오래) | 트랜잭션 종료 시 반환 |
+| N+1 위험 | 높음 | 낮음 (Service에서 명시적 처리) |
+| 쿼리 추적 | 어려움 | 명확 |
+
+```yaml
+# application.yml
+spring:
+  jpa:
+    open-in-view: false  # 실무 권장
+```
+
+OSIV를 끄면 모든 Lazy 로딩은 `@Transactional` 범위 안에서만 가능하므로, **Service 계층에서 필요한 데이터를 모두 준비하는 설계**가 강제됩니다. 이는 쿼리 위치를 예측 가능하게 만들어 성능 문제를 사전에 방지합니다.
+
+---
+
+## 7. 실무 철칙 정리
+
+| 상황 | 권장 방식 |
+|------|----------|
+| 조회 전용 API | DTO 프로젝션 |
+| 수정/비즈니스 로직 | 엔티티 |
+| 1:N 컬렉션 + 페이징 | ID 페이징 또는 @BatchSize |
+| 단건 연관 조회 | Fetch Join / @EntityGraph |
+| OSIV 설정 | `open-in-view: false` + Service 계층 중심 설계 |
+
+---
+
+## 8. 실습 내용
 1. `src/test/java/com/exam/jpa/repository/RepositoryTest.java`: JPA 기본 기능 테스트
 2. `src/test/java/com/exam/jpa/repository/OrderRepositoryTest.java`: QueryDSL 및 Cascade 테스트
