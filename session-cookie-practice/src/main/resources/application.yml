@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: session-cookie-practice
+
+  # Redis 설정 (Spring Session 저장소)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      # 연결 풀 설정
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  # Spring Session 설정
+  session:
+    store-type: redis
+    timeout: 1800s  # 30분
+    redis:
+      namespace: spring:session
+      flush-mode: on-save
+
+# 서버 설정
+server:
+  port: 8080
+  servlet:
+    session:
+      cookie:
+        name: SESSIONID
+        http-only: true
+        secure: true
+        same-site: strict
+        max-age: 1800  # 30분
+
+# 로깅
+logging:
+  level:
+    com.exam.sessioncookie: DEBUG
+    org.springframework.session: DEBUG
+    org.springframework.data.redis: DEBUG
