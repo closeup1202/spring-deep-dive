@@ -1,0 +1,77 @@
+# Kafka 3.7 KRaft 모드 (ZooKeeper 없음)
+# confluent cp-kafka 7.7.x = Kafka 3.7.x
+#
+# KRaft 구조:
+#   - 단일 노드가 broker + controller 역할을 동시에 수행
+#   - CLUSTER_ID는 고정값 (base64 UUID), 최초 포맷 시 사용
+#   - 기존 ZooKeeper 기반: 별도 ZooKeeper 3노드 + Kafka 브로커
+#   - KRaft: Kafka만 운영
+
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: kafka-kraft
+    ports:
+      - "9092:9092"
+      - "9093:9093"  # Controller 포트 (외부 노출 불필요, 모니터링용)
+    environment:
+      # ─── KRaft 필수 설정 ───────────────────────────────────────────────
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller          # 단일 노드가 두 역할 수행
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093' # nodeId@host:controllerPort
+
+      # ─── 리스너 설정 ──────────────────────────────────────────────────
+      # PLAINTEXT: 클라이언트용, CONTROLLER: 컨트롤러 내부 통신용
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # ─── 복제 설정 (단일 브로커이므로 1) ──────────────────────────────
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+
+      # ─── 로그 보존 정책 ────────────────────────────────────────────────
+      KAFKA_LOG_RETENTION_HOURS: 168          # 7일
+      KAFKA_LOG_RETENTION_BYTES: 1073741824   # 1GB per partition
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824     # segment 파일 최대 크기 1GB
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000  # 5분마다 체크
+
+      # ─── 성능 설정 ─────────────────────────────────────────────────────
+      KAFKA_NUM_PARTITIONS: 3                 # 기본 파티션 수
+      KAFKA_NUM_NETWORK_THREADS: 3
+      KAFKA_NUM_IO_THREADS: 8
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
+
+      # ─── 클러스터 ID (base64 UUID, 변경 금지) ──────────────────────────
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qg'
+
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # ─── Kafka UI (선택, 브라우저에서 토픽/컨슈머 그룹 확인) ───────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8989:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local-kraft
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+volumes:
+  kafka-data:

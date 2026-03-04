@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:txtemplate;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    # OSIV 끔: Service 계층 밖에서 Lazy 로딩 방지
+    open-in-view: false
+
+  h2:
+    console:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.transaction: DEBUG   # 트랜잭션 begin/commit/rollback 로그
+    org.springframework.orm.jpa: DEBUG
+    com.exam.txtemplate: DEBUG

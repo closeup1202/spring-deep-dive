@@ -1,0 +1,14 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+
+  # KafkaAdmin: 토픽 자동 생성 설정 (KafkaTopicConfig의 @Bean NewTopic 활성화)
+  kafka:
+    admin:
+      auto-create: true
+
+logging:
+  level:
+    org.springframework.kafka: INFO
+    org.apache.kafka: WARN                         # Kafka 클라이언트 로그 (INFO면 너무 많음)
+    com.exam.kafka: DEBUG
