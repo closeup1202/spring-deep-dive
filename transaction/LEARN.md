@@ -65,6 +65,291 @@ public void readData() { ... }
 
 ---
 
+## 3-1. 이상 현상 상세 — 다이어그램으로 이해하기
+
+### Dirty Read
+
+**정의**: 아직 커밋되지 않은 다른 트랜잭션의 변경 데이터를 읽는 현상.
+
+```
+시간  Transaction A                      Transaction B
+────  ─────────────────────────────     ──────────────────────────────
+T1                                       BEGIN
+T2                                       UPDATE account SET balance = 9000
+                                         WHERE id = 1
+                                         -- 아직 COMMIT 안 함 (잠정 변경)
+T3    BEGIN
+T4    SELECT balance FROM account
+      WHERE id = 1
+      → 9000  ◀── Dirty Read!
+              커밋되지 않은 값을 읽음
+T5    IF balance >= 5000 THEN
+        출금 처리...  ← 잘못된 판단 근거
+T6                                       ROLLBACK
+                                         -- balance는 다시 1000으로
+T7    이미 출금 처리됨 → 데이터 불일치!
+```
+
+**발생 격리 수준**: `READ_UNCOMMITTED` 에서만 발생
+
+**방지 격리 수준**: `READ_COMMITTED` 이상
+
+**방지 원리**:
+```
+Lock-based:
+  B가 행을 수정할 때 Exclusive Lock 획득
+  A가 SELECT 시도 → Shared Lock 대기
+  → B가 COMMIT 또는 ROLLBACK 후 Lock 해제 시에만 A가 읽을 수 있음
+  → 커밋된 데이터만 읽게 됨
+
+MVCC(MySQL InnoDB, PostgreSQL):
+  B의 변경은 새 버전(uncommitted)으로 저장
+  A의 SELECT는 B의 트랜잭션 시작 전 마지막 커밋된 버전을 읽음
+  → Lock 없이도 커밋된 데이터만 읽음 (읽기 성능 향상)
+```
+
+---
+
+### Non-Repeatable Read
+
+**정의**: 같은 트랜잭션 안에서 같은 행을 두 번 읽었을 때 값이 달라지는 현상.
+다른 트랜잭션이 그 사이에 해당 행을 수정 후 커밋했기 때문에 발생.
+
+```
+시간  Transaction A                      Transaction B
+────  ─────────────────────────────     ──────────────────────────────
+T1    BEGIN
+T2    SELECT balance FROM account
+      WHERE id = 1
+      → 1000  (첫 번째 읽기)
+T3                                       BEGIN
+T4                                       UPDATE account SET balance = 9000
+                                         WHERE id = 1
+T5                                       COMMIT
+T6    SELECT balance FROM account
+      WHERE id = 1
+      → 9000  (두 번째 읽기) ◀── Non-Repeatable Read!
+              같은 쿼리인데 다른 값
+T7    첫 읽기(1000)와 두 번째(9000) 기준으로
+      다른 로직 실행 → 불일치
+```
+
+**발생 격리 수준**: `READ_UNCOMMITTED`, `READ_COMMITTED`
+
+**방지 격리 수준**: `REPEATABLE_READ` 이상
+
+**방지 원리**:
+```
+Lock-based (전통적 방식):
+  T2에서 SELECT 시 Shared Lock 획득, 트랜잭션 종료까지 유지
+  T4에서 B가 UPDATE 시도 → Exclusive Lock 대기 (A의 Shared Lock과 충돌)
+  → A가 커밋/롤백할 때까지 B가 블로킹됨
+  → A의 두 번째 SELECT도 같은 값(1000)을 읽음
+
+MVCC (MySQL InnoDB REPEATABLE_READ):
+  A의 BEGIN 시점에 스냅샷(Read View) 생성
+  이후 B가 아무리 커밋해도 A는 스냅샷 기준으로 읽음
+  → T6의 SELECT도 스냅샷 기준 1000을 읽음
+  → Lock 없이도 반복 읽기 일관성 보장
+```
+
+---
+
+### Phantom Read
+
+**정의**: 같은 트랜잭션 안에서 동일 범위 조건으로 조회했을 때, 처음엔 없던 행이
+두 번째 조회에서 나타나거나 사라지는 현상. `WHERE` 범위 조건 + `INSERT`/`DELETE` 조합.
+
+```
+시간  Transaction A                      Transaction B
+────  ─────────────────────────────     ──────────────────────────────
+T1    BEGIN
+T2    SELECT * FROM orders
+      WHERE amount > 5000
+      → 3건  (첫 번째 범위 조회)
+T3                                       BEGIN
+T4                                       INSERT INTO orders
+                                         VALUES (amount=8000, ...)
+T5                                       COMMIT
+T6    SELECT * FROM orders
+      WHERE amount > 5000
+      → 4건  (두 번째 범위 조회) ◀── Phantom Read!
+              幽靈(유령) 행이 나타남
+T7    첫 조회 결과 기준으로 처리 중
+      → 갑자기 행 수가 달라져 로직 오류
+```
+
+**발생 격리 수준**: `READ_UNCOMMITTED`, `READ_COMMITTED`, `REPEATABLE_READ` (lock-based 시스템)
+
+**방지 격리 수준**: `SERIALIZABLE` (표준 기준)
+
+**방지 원리**:
+```
+SERIALIZABLE — Next-Key Lock (MySQL InnoDB):
+  T2에서 범위 조건(amount > 5000)에 Gap Lock 획득
+  Gap Lock: 인덱스 레코드 사이의 '빈 공간'을 잠금
+  T4에서 B의 INSERT(amount=8000) → Gap Lock 구간에 해당 → 대기
+  → A 커밋 후에야 B가 INSERT 가능
+  → A의 두 번째 조회도 3건
+
+SERIALIZABLE — PostgreSQL SSI (Serializable Snapshot Isolation):
+  트랜잭션 간 읽기/쓰기 의존성을 추적
+  충돌 감지 시 나중에 커밋한 트랜잭션을 롤백 (abort)
+  → Lock 없이 직렬화 달성 (높은 동시성 유지)
+```
+
+---
+
+### MySQL InnoDB의 특수 사례 — REPEATABLE_READ에서 Phantom Read
+
+MySQL InnoDB는 `REPEATABLE_READ`(기본값)에서 MVCC와 Gap Lock을 함께 사용하므로
+**일반 SELECT에서는 Phantom Read가 발생하지 않는다.** 하지만 예외가 있다.
+
+```
+[Snapshot Read] vs [Current Read]
+
+Snapshot Read (MVCC 스냅샷):
+  일반 SELECT문
+  → 트랜잭션 시작 시점의 스냅샷 기준으로 읽음
+  → Phantom Read 없음
+
+Current Read (최신 커밋 데이터 직접 읽기):
+  SELECT ... FOR UPDATE
+  SELECT ... LOCK IN SHARE MODE
+  UPDATE / DELETE (내부적으로 current read)
+  → 스냅샷 무시, 현재 커밋된 최신 데이터 읽음
+  → Gap Lock 없으면 Phantom Row 보임
+```
+
+```
+Phantom이 발생하는 패턴 (REPEATABLE_READ):
+
+시간  Transaction A                      Transaction B
+────  ─────────────────────────────     ──────────────────────────────
+T1    BEGIN
+T2    SELECT * FROM orders
+      WHERE amount > 5000
+      → 3건  (Snapshot Read, MVCC)
+T3                                       INSERT INTO orders (amount=8000)
+                                         COMMIT
+T4    SELECT * FROM orders
+      WHERE amount > 5000
+      → 3건  (Snapshot Read, 아직 Phantom 없음)
+T5    SELECT * FROM orders
+      WHERE amount > 5000
+      FOR UPDATE                ◀── Current Read!
+      → 4건  (Phantom Read 발생!)
+              B가 삽입한 행이 Gap Lock 없이 보임
+```
+
+**실무 대응**:
+- 범위 조회 후 `FOR UPDATE`를 혼합하는 패턴 → `SERIALIZABLE` 사용 또는 애플리케이션 레벨 제어
+- 정합성이 절대적으로 중요한 금융 연산 → `SERIALIZABLE` 또는 비관적 락(`SELECT ... FOR UPDATE`)
+
+---
+
+### 격리 수준 구현 메커니즘 비교
+
+```
+┌──────────────────────┬────────────────────────────────────────────────┐
+│ 방식                 │ 특징                                            │
+├──────────────────────┼────────────────────────────────────────────────┤
+│ Lock 기반            │ 읽기 시 Shared Lock, 쓰기 시 Exclusive Lock     │
+│ (전통 RDBMS)         │ 높은 격리 = 높은 잠금 경쟁 = 낮은 동시성        │
+│                      │ Deadlock 위험                                  │
+├──────────────────────┼────────────────────────────────────────────────┤
+│ MVCC                 │ 각 트랜잭션에 스냅샷 제공                       │
+│ (MySQL InnoDB,       │ 읽기 시 Lock 불필요 → 읽기/쓰기 충돌 없음      │
+│  PostgreSQL)         │ Undo Log에 이전 버전 보관                       │
+│                      │ 읽기 성능↑, 쓰기 충돌만 Lock으로 처리          │
+└──────────────────────┴────────────────────────────────────────────────┘
+```
+
+```
+MVCC 스냅샷 동작 예시 (MySQL InnoDB):
+
+                  Undo Log (버전 체인)
+balance=1000 ──→ balance=5000 ──→ balance=9000
+(TX 50 이전)     (TX 50 커밋)     (TX 80 커밋)
+
+TX 60 (REPEATABLE_READ, 시작 시점=TX 55):
+  → TX 55 이전 마지막 커밋 버전 = balance=1000 읽음
+
+TX 90 (READ_COMMITTED):
+  → 현재 최신 커밋 버전 = balance=9000 읽음
+  → TX 60이 아직 살아있어도 TX 90은 최신 커밋 읽음
+```
+
+---
+
+### 격리 수준 선택 가이드
+
+```
+READ_UNCOMMITTED
+  └─ 사용처: 거의 없음. 실시간 통계/모니터링처럼 약간의 부정확함이 허용되고
+             최대 처리량이 필요한 경우 (실무에서 사실상 미사용)
+
+READ_COMMITTED
+  └─ 사용처: Oracle/PostgreSQL 기본값
+             대부분의 웹 애플리케이션 (Dirty Read 방지로 충분한 경우)
+             OLTP 환경에서 높은 동시성 필요 시
+
+REPEATABLE_READ (MySQL 기본값)
+  └─ 사용처: 한 트랜잭션 내에서 같은 데이터를 여러 번 읽어야 하는 경우
+             정합성 중요, MySQL InnoDB에서는 Phantom Read도 대부분 방지됨
+             배치 처리, 재무 계산
+
+SERIALIZABLE
+  └─ 사용처: 완전한 데이터 정합성 필수 (금융 이체, 재고 차감)
+             Phantom Read까지 100% 방지
+             처리량보다 정합성이 절대 우선인 경우
+             (성능 저하 크므로 꼭 필요한 연산에만 국소적으로 적용)
+```
+
+```java
+// 실무 패턴: 기본은 DEFAULT, 특수 케이스만 명시
+
+// 일반 조회 — DB 기본값 사용
+@Transactional(readOnly = true)
+public List<Order> findOrders() { ... }
+
+// 같은 데이터를 트랜잭션 내에서 여러 번 읽는 중요 로직
+@Transactional(isolation = Isolation.REPEATABLE_READ)
+public void calculateMonthlyRevenue() { ... }
+
+// 재고 차감처럼 Phantom Read까지 막아야 하는 금융 연산
+@Transactional(isolation = Isolation.SERIALIZABLE)
+public void deductStock(Long productId, int quantity) { ... }
+```
+
+> **주의**: `Isolation.SERIALIZABLE`은 Gap Lock(MySQL) 또는 SSI(PostgreSQL)를 사용하므로
+> 동시 트랜잭션이 많을수록 처리량이 급격히 감소하고 Deadlock 위험이 증가한다.
+> 격리 수준을 올리기 전에 비관적 락(`SELECT ... FOR UPDATE`)으로 대상을 좁히는 것이 대안이 될 수 있다.
+
+---
+
+### 이상 현상 × 격리 수준 — 전체 정리
+
+```
+                    ┌──────────────┬──────────────────┬──────────────┐
+                    │  Dirty Read  │ Non-Repeatable   │ Phantom Read │
+                    │              │      Read        │              │
+┌───────────────────┼──────────────┼──────────────────┼──────────────┤
+│ READ_UNCOMMITTED  │   발생 ❌    │    발생 ❌        │   발생 ❌    │
+├───────────────────┼──────────────┼──────────────────┼──────────────┤
+│ READ_COMMITTED    │   방지 ✅    │    발생 ❌        │   발생 ❌    │
+├───────────────────┼──────────────┼──────────────────┼──────────────┤
+│ REPEATABLE_READ   │   방지 ✅    │    방지 ✅        │ △ (DB마다)  │
+│ (MySQL InnoDB)    │              │                  │ MVCC+GapLock │
+├───────────────────┼──────────────┼──────────────────┼──────────────┤
+│ SERIALIZABLE      │   방지 ✅    │    방지 ✅        │   방지 ✅    │
+└───────────────────┴──────────────┴──────────────────┴──────────────┘
+
+△ MySQL InnoDB REPEATABLE_READ: 일반 SELECT는 방지, FOR UPDATE 혼합 패턴은 주의
+```
+
+---
+
 ## 4. 트랜잭션 전파 전체 옵션
 
 | 전파 속성 | 기존 트랜잭션 있을 때 | 기존 트랜잭션 없을 때 | 주요 용도 |
