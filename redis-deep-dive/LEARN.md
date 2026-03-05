@@ -168,7 +168,108 @@ public User getUser(Long id) {
 
 ---
 
-## 5. 실무 안티패턴
+## 5. Redis Lua Script — Atomic 감소
+
+### Race Condition: DECR 방식의 문제
+
+재고 감소를 단순 `DECR` + 음수 체크로 구현하면 두 명령 사이에 다른 요청이 끼어들 수 있습니다.
+
+```java
+// ❌ Race Condition 발생 가능
+Long stock = redisTemplate.opsForValue().decrement(key, quantity);  // DECR
+if (stock == null || stock < 0) {
+    redisTemplate.opsForValue().increment(key, quantity);           // 복구 INCR
+    return false;
+}
+```
+
+```
+재고: 1, 동시 요청: 2개
+
+Thread-A: DECR → stock = 0  → (0 >= 0) 성공 판단, 주문 처리 시작
+Thread-B: DECR → stock = -1 → INCR 복구 실행
+          (이때 Thread-A는 이미 성공 반환 → Kafka 발행 완료)
+          Thread-B INCR → 재고 0 → 1 복구
+
+결과: 재고 1개인데 Thread-A 주문 성공 + 재고가 1로 복구 → 다음 요청도 성공 가능
+     → 초과 판매 발생
+```
+
+DECR과 복구 INCR은 별도 명령 → **"검증"과 "차감"이 원자적이지 않음**이 핵심 문제입니다.
+
+### Lua Script 적용
+
+```java
+// ✅ Lua Script — Atomic 재고 감소
+private static final RedisScript<Long> DECREASE_STOCK_SCRIPT = RedisScript.of(
+    """
+    local stock = tonumber(redis.call('GET', KEYS[1]))
+    if stock == nil then
+        return -2
+    end
+    if stock < tonumber(ARGV[1]) then
+        return -1
+    end
+    return redis.call('DECRBY', KEYS[1], ARGV[1])
+    """,
+    Long.class
+);
+
+public boolean decrease(Long productId, int quantity) {
+    String key = "product:stock:" + productId;
+
+    Long result = redisTemplate.execute(
+        DECREASE_STOCK_SCRIPT,
+        List.of(key),
+        String.valueOf(quantity)
+    );
+
+    // -2: 키 없음, -1: 재고 부족, 0 이상: 감소 성공
+    return result != null && result >= 0;
+}
+```
+
+### Lua가 왜 Atomic인가
+
+```
+Redis 단일 스레드 모델:
+  Redis는 명령을 하나씩 순차 처리
+  → 일반 명령(GET, SET): 명령 사이에 다른 클라이언트 요청 끼어들기 가능
+
+  Lua Script: 스크립트 전체가 하나의 명령으로 취급
+  → 스크립트 실행 도중 다른 명령 처리 불가
+
+비교:
+  ❌ DECR 방식:  DECR ─── (다른 요청 끼어들 수 있음) ─── INCR 복구
+  ✅ Lua Script: [GET → 재고 검증 → DECRBY] 전체가 하나의 원자 연산
+```
+
+| 구분 | DECR + INCR | Lua Script |
+|------|------------|------------|
+| 원자성 | ❌ 두 명령 사이 개입 가능 | ✅ 스크립트 전체가 단일 명령 |
+| Race Condition | 발생 가능 | 발생 불가 |
+| 재고 음수 가능성 | 있음 | 없음 |
+| 추가 의존성 | 없음 | 없음 (Redis 내장) |
+| 복잡도 | 낮음 | 약간 높음 (Lua 문법) |
+
+### Lua Script vs 분산 락 선택 기준
+
+```
+Lua Script가 적합한 경우:
+  - "조회 → 검증 → 쓰기"를 원자적으로 처리해야 할 때
+  - 재고 감소, 쿠폰 차감처럼 단순한 카운터 연산
+  - 외부 API 호출 등 느린 작업이 없는 경우
+  - Redis 단일 노드 또는 클러스터의 단일 키 대상
+
+분산 락(Redisson)이 적합한 경우:
+  - 여러 Redis 키 또는 외부 자원(DB)을 함께 변경해야 할 때
+  - 처리 시간이 긴 로직 (외부 API 호출, 복잡한 비즈니스 로직)
+  - 트랜잭션 범위가 Lua로 표현하기 복잡한 경우
+```
+
+---
+
+## 6. 실무 안티패턴
 
 ### ❌ 캐시 스탬피드 (Cache Stampede)
 
@@ -226,10 +327,11 @@ if (lock.tryLock(5, 3, TimeUnit.SECONDS)) {
 
 ---
 
-## 6. 실습 내용
+## 7. 실습 내용
 
 `src/test/java/com/exam/redis/RedisDeepDiveTest.java`를 실행하세요.
 (주의: 로컬에 Redis가 6379 포트로 떠 있어야 합니다)
 
 1. **`distributedLockTest`**: 5개 스레드가 동시 진입 → 로그가 순차적으로 출력되는지 확인.
 2. **`rankingTest`**: 점수 추가 후 `ZREVRANGE`로 정렬 순서 검증.
+3. **`luaScriptStockDecreaseTest`**: 재고 10개에 20개 스레드 동시 차감 → 정확히 10개 성공, 재고 0 검증.

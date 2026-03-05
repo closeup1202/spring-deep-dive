@@ -28,6 +28,10 @@ public class KafkaProducerConfig {
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         config.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false); // 헤더에 타입 정보 미포함 (수신자 의존성 제거)
 
+        // ─── 클라이언트 식별 ────────────────────────────────────────────────
+        // 브로커 로그 / Kafka UI에서 어느 인스턴스의 프로듀서인지 구별 가능
+        config.put(ProducerConfig.CLIENT_ID_CONFIG, "order-service-producer");
+
         // ─── 멱등성(Idempotence) 설정 ──────────────────────────────────────
         // Kafka 3.0+에서는 기본값이 true이지만 명시적 설정 권장
         // 동작 원리: Producer에 PID 부여 + 각 메시지에 시퀀스 번호 부여
@@ -55,6 +59,14 @@ public class KafkaProducerConfig {
         // ─── 타임아웃 설정 ─────────────────────────────────────────────────
         config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 30_000);    // 브로커 응답 대기 30초
         config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 120_000);  // 전체 전송 타임아웃 2분
+
+        // ─── 버퍼 백프레셔 ─────────────────────────────────────────────────
+        // max.block.ms: Record Accumulator가 가득 찼거나 메타데이터 조회 실패 시
+        //   send() 호출 스레드가 블로킹되는 최대 시간 (기본값: 60,000ms)
+        //   → 기본값 60초: 브로커 장애 시 호출 스레드가 1분간 묶임 → API 응답 지연
+        //   → 5초로 단축하면 빠른 실패(fail-fast) → TimeoutException 즉시 수신
+        //   → 호출자에서 Outbox 패턴 등으로 재발행 처리 가능
+        config.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 5_000);
 
         return new DefaultKafkaProducerFactory<>(config);
     }

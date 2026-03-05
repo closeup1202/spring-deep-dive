@@ -37,6 +37,11 @@ public class KafkaConsumerConfig {
         config.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
         config.put(JsonDeserializer.VALUE_DEFAULT_TYPE, "com.exam.kafka.domain.OrderEvent");
 
+        // ─── 클라이언트 식별 ────────────────────────────────────────────────
+        // 브로커 로그 / Kafka UI에서 어느 인스턴스인지 구별 가능
+        // K8s 환경에서는 Pod명을 suffix로 추가 권장: "order-service-consumer-" + podName
+        config.put(ConsumerConfig.CLIENT_ID_CONFIG, "order-service-consumer");
+
         // ─── 오프셋 커밋 전략 ──────────────────────────────────────────────
         // false: 수동 커밋 (MANUAL_IMMEDIATE)
         //   → 처리 성공 후 ack.acknowledge() 호출 시 커밋
@@ -79,6 +84,24 @@ public class KafkaConsumerConfig {
         // read_uncommitted(기본): 커밋되지 않은 메시지도 소비
         config.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
 
+        // ─── Fetch 최적화 ───────────────────────────────────────────────────
+        // fetch.min.bytes: 브로커가 이 크기 이상 데이터가 모여야 응답 (기본값: 1byte)
+        //   → 1byte 기본값은 1건만 있어도 즉시 응답 → 저처리량 환경에서 잦은 소규모 fetch
+        //   → 1KB 이상으로 설정하면 한 번에 더 많이 가져와 네트워크 왕복 감소
+        //   → 단, fetch.max.wait.ms 내에 이 크기 미달이면 그냥 응답하므로 지연 증가 없음
+        // fetch.max.wait.ms: fetch.min.bytes 미충족 시 브로커가 최대 대기 후 응답 (기본값: 500ms)
+        //   → fetch.min.bytes 높일수록 이 값도 함께 조정 (기본 500ms면 대부분 충분)
+        config.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, 1_024);  // 1KB (기본: 1byte)
+        config.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, 500);  // 기본값과 동일
+
+        // ─── Static Group Membership ────────────────────────────────────────
+        // group.instance.id: 컨슈머에 고정 ID 부여 (기본값: 매 시작마다 새 멤버로 인식)
+        //   → 재시작 시 같은 ID로 재접속하면 session.timeout.ms 내라면 리밸런싱 없이
+        //     기존 파티션 그대로 유지
+        //   → 유지보수·롤링 배포가 잦은 환경에서 불필요한 리밸런싱 방지
+        //   → K8s: Pod명을 사용 (각 Pod마다 고유해야 함)
+        // config.put(ConsumerConfig.GROUP_INSTANCE_ID_CONFIG, "order-consumer-0");
+
         return new DefaultKafkaConsumerFactory<>(config);
     }
 
@@ -91,9 +114,31 @@ public class KafkaConsumerConfig {
             new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
 
-        // MANUAL_IMMEDIATE: ack.acknowledge() 호출 즉시 브로커에 커밋
-        // MANUAL: 다음 poll() 직전에 일괄 커밋 (약간의 지연 허용 시)
+        // ─── AckMode: Spring Kafka 커밋 전략 ───────────────────────────────
+        // 기본값: BATCH  → poll() 한 배치 전체 처리 후 자동 커밋
+        //   단점: 배치 중간 실패 시 앞서 성공한 레코드도 재처리됨
+        //
+        // RECORD        → 각 레코드 리스너 완료 후 자동 커밋
+        //   Acknowledgment 파라미터 불필요, 단순 구현에 적합
+        //   단점: 처리 전에 커밋되는 타이밍이 없어 중복 처리 가능성 존재
+        //
+        // MANUAL_IMMEDIATE → ack.acknowledge() 호출 즉시 커밋 (현재 설정)
+        //   처리 성공 여부를 직접 제어 → at-least-once 보장
+        //   단점: Acknowledgment 파라미터를 리스너마다 선언해야 함
+        //
+        // MANUAL        → ack.acknowledge() 호출 후 다음 poll() 직전에 커밋
+        //   MANUAL_IMMEDIATE보다 커밋 시점이 느슨 (I/O 횟수 약간 감소)
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+
+        // ─── Poll 타임아웃 ──────────────────────────────────────────────────
+        // poll() 시 브로커로부터 응답을 기다리는 최대 시간 (기본값: 5000ms)
+        // 짧게 설정할수록 SIGTERM 수신 후 종료 응답성 향상
+        factory.getContainerProperties().setPollTimeout(3_000);
+
+        // ─── Graceful Shutdown ──────────────────────────────────────────────
+        // SIGTERM 수신 후 현재 처리 중인 레코드 완료를 기다리는 최대 시간 (기본값: 10,000ms)
+        // K8s 환경: terminationGracePeriodSeconds(기본 30s)보다 짧게 설정
+        factory.getContainerProperties().setShutdownTimeout(30_000);
 
         // 컨슈머 스레드 수: 파티션 수 이하로 설정 (초과해도 의미 없음)
         factory.setConcurrency(3);
