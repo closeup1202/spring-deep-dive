@@ -1,6 +1,6 @@
 # Redis Deep Dive: 분산 락과 랭킹 시스템
 
-## 📌 언제 사용하는가?
+## 언제 사용하는가?
 
 ### ✅ Redis가 적합한 경우
 1. **캐시 (Cache)**: DB 조회 결과를 메모리에 저장하여 응답 시간 단축
@@ -273,18 +273,104 @@ Lua Script가 적합한 경우:
 
 ### ❌ 캐시 스탬피드 (Cache Stampede)
 
+캐시가 만료된 순간, 동일한 데이터를 요청하는 트래픽이 한꺼번에 DB로 몰리는 현상입니다.
+
 ```
-캐시 만료 → 동시에 수천 개 요청이 DB로 몰림 → DB 과부하
+인기 상품 캐시 TTL 만료
+    → 동시에 수천 개 요청이 DB로 직행
+    → DB CPU 급증 → 커넥션 풀 고갈 → 응답 지연 → 재시도 폭증
+    → 연쇄 장애 (cascading failure) → 전체 서비스 다운
 ```
 
-**해결책**: 뮤텍스 락 또는 확률적 갱신(Probabilistic Early Expiration)
+**자주 발생하는 상황**: 인기 게시글, 메인 대시보드, 실시간 랭킹, AI 모델 응답 캐시, TTL 고정값으로 설정한 경우
+
+#### 해결 전략 1: TTL 랜덤화 (가장 간단, 실무 최다 사용)
+
+만료 시점을 분산시켜 한 번에 몰리지 않도록 합니다.
 
 ```java
-// 캐시 만료 전에 미리 갱신 (PER 방식)
-if (ttl < 60 && Math.random() < 0.1) { // 만료 1분 전, 10% 확률로 선제 갱신
+// ❌ 고정 TTL → 동시 만료
+redisTemplate.opsForValue().set(key, value, 600, TimeUnit.SECONDS);
+
+// ✅ TTL 랜덤화 → 만료 시점 분산
+int ttl = 600 + ThreadLocalRandom.current().nextInt(0, 60);
+redisTemplate.opsForValue().set(key, value, ttl, TimeUnit.SECONDS);
+```
+
+#### 해결 전략 2: Mutex Lock (분산 락)
+
+캐시 Miss 시 딱 한 명만 DB를 조회하도록 제한합니다.
+
+```java
+// Redis SETNX 기반 — 첫 번째 요청만 DB 조회, 나머지는 대기 후 캐시 사용
+public Product getProduct(Long id) {
+    String cacheKey = "product:" + id;
+    Product cached = (Product) redisTemplate.opsForValue().get(cacheKey);
+    if (cached != null) return cached;
+
+    String lockKey = "LOCK:" + cacheKey;
+    Boolean locked = redisTemplate.opsForValue()
+        .setIfAbsent(lockKey, "1", 3, TimeUnit.SECONDS); // SETNX
+
+    if (Boolean.TRUE.equals(locked)) {
+        try {
+            Product product = productRepository.findById(id).orElseThrow();
+            redisTemplate.opsForValue().set(cacheKey, product, 600, TimeUnit.SECONDS);
+            return product;
+        } finally {
+            redisTemplate.delete(lockKey);
+        }
+    } else {
+        // 락 획득 실패 → 잠시 대기 후 캐시 재조회
+        Thread.sleep(100);
+        return (Product) redisTemplate.opsForValue().get(cacheKey);
+    }
+}
+```
+
+#### 해결 전략 3: Stale-While-Revalidate
+
+TTL이 만료돼도 기존(stale) 데이터를 즉시 반환하면서 백그라운드에서 갱신합니다.
+
+```java
+// 논리적 TTL을 데이터 안에 포함 → 실제 TTL은 더 길게 설정
+public Product getProduct(Long id) {
+    CachedProduct cached = (CachedProduct) redisTemplate.opsForValue().get("product:" + id);
+
+    if (cached != null && !cached.isExpired()) {
+        return cached.getData(); // 아직 유효한 캐시 반환
+    }
+    if (cached != null && cached.isExpired()) {
+        // 만료됐지만 기존 값 즉시 반환 + 백그라운드 갱신
+        CompletableFuture.runAsync(() -> refreshCache(id));
+        return cached.getData(); // stale 허용
+    }
+    return refreshCache(id); // 최초 캐시 미스
+}
+```
+
+#### 해결 전략 4: Probabilistic Early Expiration (PER)
+
+TTL 만료 전에 확률적으로 선제 갱신합니다. 트래픽이 많을수록 갱신 확률이 높아집니다.
+
+```java
+// 만료 1분 전, 10% 확률로 선제 갱신 → 만료 시점에 몰리지 않음
+Long ttl = redisTemplate.getExpire(key, TimeUnit.SECONDS);
+if (ttl != null && ttl < 60 && Math.random() < 0.1) {
     refreshCache(key);
 }
 ```
+
+#### 전략 비교
+
+| 방법 | 구현 난이도 | 안정성 | Stale 허용 | 실무 사용 빈도 |
+|------|-----------|--------|-----------|-------------|
+| TTL 랜덤화 | ★ | 중 | ❌ | ⭐⭐⭐⭐⭐ |
+| Mutex Lock | ★★★ | 높음 | ❌ | ⭐⭐⭐⭐ |
+| Stale-While-Revalidate | ★★★ | 매우 높음 | ✅ | ⭐⭐⭐⭐ |
+| PER (선제 갱신) | ★★ | 높음 | ❌ | ⭐⭐⭐ |
+
+> **실무 권장**: 일반적으로 TTL 랜덤화를 기본으로 적용하고, Hot Key + 고비용 조회(AI 응답, 복잡한 집계)에는 Mutex Lock 또는 Stale-While-Revalidate를 추가로 적용합니다.
 
 ### ❌ 큰 컬렉션 키 (Hot Key + Big Key)
 
