@@ -22,11 +22,11 @@ public class OrderEventProducer {
 
     /**
      * 비동기 전송 — 처리량 우선.
-     *
+     * <p>
      * orderId를 key로 사용:
      *   → 같은 orderId는 항상 같은 파티션으로 → 파티션 내 순서 보장
      *   → CREATED → PAID → SHIPPED 이벤트 순서가 유지됨
-     *
+     * <p>
      * whenComplete 콜백:
      *   → 성공/실패를 Sender Thread에서 비동기 처리
      *   → 호출 스레드는 전송 결과를 기다리지 않음 (throughput 향상)
@@ -48,10 +48,10 @@ public class OrderEventProducer {
 
     /**
      * 동기 전송 — 결제 완료처럼 전송 보장이 중요한 경우.
-     *
+     * <p>
      * .get(timeout)으로 브로커 응답을 기다린 후 반환.
      * timeout 내 응답 없으면 TimeoutException → 상위에서 보상 처리(Outbox 등).
-     *
+     * <p>
      * 주의: 동기 전송은 호출 스레드를 블로킹 → 처리량이 크게 감소.
      *   → 반드시 필요한 경우에만 사용 (결제 확인, 송금 완료 등)
      */

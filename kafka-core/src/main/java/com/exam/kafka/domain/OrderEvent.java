@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 
 /**
  * 주문 이벤트 도메인.
- *
+ * <p>
  * Kafka 메시지의 key = orderId → 같은 주문의 이벤트는 항상 같은 파티션으로 전송.
  * 이를 통해 같은 주문에 대한 메시지 순서(CREATED → PAID → SHIPPED)가 보장된다.
  */

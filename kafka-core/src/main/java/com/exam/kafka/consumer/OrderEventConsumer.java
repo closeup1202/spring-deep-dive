@@ -41,14 +41,14 @@ public class OrderEventConsumer {
 
     /**
      * 배치 처리 컨슈머 — 한 번에 여러 메시지를 묶어서 처리.
-     *
+     * <p>
      * 배치 처리 장점:
      *   - DB bulk insert / batch API 호출 가능
      *   - 개별 처리 대비 I/O 횟수 감소
-     *
+     * <p>
      * containerFactory의 setBatchListener(true) 필요.
      * 여기서는 별도 배치 전용 팩토리를 직접 선언하지 않고 주석으로 설명.
-     *
+     * <p>
      * 실제 배치 처리 시:
      * @KafkaListener(... containerFactory = "batchKafkaListenerContainerFactory")
      * public void consumeBatch(List<ConsumerRecord<String, OrderEvent>> records, Acknowledgment ack) {

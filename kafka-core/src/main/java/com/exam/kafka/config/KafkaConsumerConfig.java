@@ -1,6 +1,8 @@
 package com.exam.kafka.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.CooperativeStickyAssignor;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +24,7 @@ import java.util.Map;
 
 @EnableKafka
 @Configuration
+@Slf4j
 public class KafkaConsumerConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
@@ -61,8 +64,7 @@ public class KafkaConsumerConfig {
         // CooperativeStickyAssignor: 점진적 리밸런싱
         //   → 이동이 필요한 파티션만 재할당 (나머지는 계속 소비)
         //   → "stop-the-world" 없음 → 처리 지연 최소화
-        config.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
-            org.apache.kafka.clients.consumer.CooperativeStickyAssignor.class.getName());
+        config.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, CooperativeStickyAssignor.class.getName());
 
         // ─── 폴링 설정 ─────────────────────────────────────────────────────
         // max.poll.records: poll() 1번에 가져올 최대 레코드 수 (기본 500)
@@ -151,11 +153,11 @@ public class KafkaConsumerConfig {
 
     /**
      * DefaultErrorHandler: @KafkaListener 레벨 에러 핸들링.
-     *
+     * <p>
      * 동작:
      *   1. 처리 실패 → ExponentialBackOff에 따라 재시도 (컨슈머 스레드 내 블로킹)
      *   2. 재시도 소진 → DeadLetterPublishingRecoverer가 DLT로 발행
-     *
+     * <p>
      * 블로킹 재시도 주의:
      *   재시도 대기 중 poll()이 호출되지 않음
      *   → max.poll.interval.ms 초과 주의
@@ -182,8 +184,7 @@ public class KafkaConsumerConfig {
 
         // 재시도 시 로그 출력
         errorHandler.setRetryListeners((record, ex, deliveryAttempt) ->
-            org.slf4j.LoggerFactory.getLogger(KafkaConsumerConfig.class)
-                .warn("[ErrorHandler] 재시도 {}/5: topic={}, offset={}, cause={}",
+           log.warn("[ErrorHandler] 재시도 {}/5: topic={}, offset={}, cause={}",
                     deliveryAttempt, record.topic(), record.offset(), ex.getMessage())
         );
 
