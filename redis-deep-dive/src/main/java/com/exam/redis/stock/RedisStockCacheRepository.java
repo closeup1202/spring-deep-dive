@@ -73,7 +73,7 @@ public class RedisStockCacheRepository {
         );
 
         // -2: 키 없음, -1: 재고 부족, 0 이상: 감소 성공
-        return result != null && result >= 0;
+        return result >= 0;
     }
 
     // ─── [Race Condition 재현] DECR 방식 — 실무에서 사용하지 말 것 ───────────
