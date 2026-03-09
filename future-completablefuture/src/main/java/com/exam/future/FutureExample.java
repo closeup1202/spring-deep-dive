@@ -6,7 +6,7 @@ import java.util.concurrent.*;
 
 /**
  * Future 예제
- *
+ * <p>
  * Future의 핵심:
  * 1. 비동기 작업의 결과를 나타내는 컨테이너
  * 2. get()으로 결과를 가져올 때까지 호출 스레드가 블로킹됨

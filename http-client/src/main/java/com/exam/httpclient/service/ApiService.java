@@ -47,4 +47,10 @@ public class ApiService {
         log.info("Calling API with Http Interface...");
         return todoClient.getTodo(id);
     }
+
+    // 3-1. HTTP Interface 비동기 사용
+    public Mono<Todo> getTodoWithHttpInterfaceAsync(Long id) {
+        log.info("Calling API with Http Interface... Async");
+        return todoClient.getTodoAsync(id);
+    }
 }

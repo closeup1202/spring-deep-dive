@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.service.annotation.GetExchange;
 import org.springframework.web.service.annotation.HttpExchange;
 import org.springframework.web.service.annotation.PostExchange;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
 
@@ -16,6 +17,9 @@ public interface TodoClient {
     // @GetExchange: GET 요청
     @GetExchange("/{id}")
     Todo getTodo(@PathVariable("id") Long id);
+
+    @GetExchange("/{id}")
+    Mono<Todo> getTodoAsync(@PathVariable("id") Long id);
 
     @GetExchange
     List<Todo> getTodos();
