@@ -162,6 +162,117 @@ acks=all 동작:
 성능 영향: 최대 20% 처리량 감소, 실무에서는 기본 적용 권장
 ```
 
+### Transaction (트랜잭션) — 여러 파티션에 걸친 원자적 전송
+
+```
+멱등성의 한계:
+  단일 파티션 내에서만 중복 제거 보장
+  → 토픽 A + 토픽 B에 동시에 써야 할 때, 둘 다 성공 or 둘 다 실패 보장 불가
+
+트랜잭션으로 해결: transaction.id 설정
+  여러 파티션/토픽에 걸친 메시지 전송을 하나의 원자적 단위로 묶음
+  → 모두 성공 or 모두 롤백 (exactly-once, 복수 파티션)
+```
+
+**멱등성 vs 트랜잭션 비교**
+```
+멱등성 (enable.idempotence):
+  범위: 단일 파티션
+  재시작 복구: 불가 (PID가 재시작마다 새로 발급됨)
+
+트랜잭션 (transaction.id):
+  범위: 여러 파티션/토픽
+  재시작 복구: 가능 (같은 transaction.id로 이전 트랜잭션 복구)
+  → transaction.id 설정 시 enable.idempotence=true 자동 활성화
+```
+
+**사용 패턴 — Kafka Streams read-process-write**
+```
+Consumer → 메시지 읽기
+    ↓
+처리 로직
+    ↓
+Producer → 결과를 여러 토픽에 쓰기 + 오프셋 커밋
+
+이 전체가 하나의 트랜잭션: 모두 성공 or 모두 롤백
+
+주의: DB + Kafka 동시 쓰기는 원자성 보장 안됨
+      Kafka 트랜잭션은 Kafka 내부에서만 유효
+```
+
+**재시작 시 좀비 펜싱(Zombie Fencing)**
+```
+Producer 재시작
+    ↓
+같은 transaction.id로 initTransactions() 호출
+    ↓
+브로커: 이 ID로 진행 중이던 트랜잭션 발견 → 강제 abort
+    ↓
+이전 Producer 인스턴스(좀비)의 쓰기 무효화 → 새 트랜잭션 시작
+
+→ 에포크(epoch) 번호를 올려서 이전 인스턴스를 차단하는 방식
+```
+
+**설정 예시**
+```java
+props.put("enable.idempotence", true);          // transaction.id 설정 시 자동 활성화
+props.put("transaction.id", "order-producer-0"); // 재시작해도 동일한 고정값 사용
+// 파티션별로 고유하게 부여하는 경우: "order-producer-" + partition
+```
+
+**Producer 코드 흐름**
+```java
+producer.initTransactions();          // 브로커에 트랜잭션 등록, 이전 미완료 트랜잭션 abort
+producer.beginTransaction();
+producer.send(record1);               // 토픽 A에 전송
+producer.send(record2);               // 토픽 B에 전송
+producer.sendOffsetsToTransaction(..) // Consumer 오프셋도 트랜잭션에 포함 (선택)
+producer.commitTransaction();         // 전부 커밋
+// 실패 시: producer.abortTransaction() → 전부 롤백
+```
+
+### 실무 설정 가이드 — 멱등성 vs 트랜잭션
+
+```
+멱등성과 트랜잭션은 목적이 다르므로 상황에 따라 선택
+
+멱등성: 재시도 시 단일 파티션 내 중복 제거
+트랜잭션: 여러 파티션/토픽에 걸친 원자적 쓰기
+```
+
+**케이스 1: 단순 이벤트 발행 (대부분의 케이스)**
+```
+enable.idempotence=true
+acks=all                                        ← 멱등성 활성화 시 자동 설정
+retries=Integer.MAX_VALUE                       ← 자동 설정
+max.in.flight.requests.per.connection=5         ← 자동 설정
+
+Kafka 3.0+에서는 enable.idempotence=true가 기본값
+→ 별도 설정 없이도 위 값들이 자동으로 적용됨
+```
+
+**케이스 2: 여러 토픽에 원자적 쓰기 필요 (특수 케이스)**
+```
+transaction.id=my-producer-0
+enable.idempotence=true                         ← transaction.id 설정 시 자동 활성화
+
+단점: 트랜잭션 코디네이터와의 2PC 오버헤드 → 레이턴시 증가, 운영 복잡도 상승
+```
+
+**상황별 권장 설정**
+
+| 상황 | 권장 |
+|------|------|
+| 단순 이벤트 발행 (단일 토픽) | 멱등성만 (Kafka 3.0+은 기본값) |
+| 여러 토픽에 원자적 쓰기 | 트랜잭션 추가 |
+| Kafka Streams read-process-write | 트랜잭션 추가 |
+| at-least-once로 충분 + Consumer가 멱등 처리 | 둘 다 불필요 |
+
+```
+결론: transaction.id는 복수 파티션 원자성이 필요할 때만 추가
+      불필요하게 트랜잭션을 쓰면 성능 손해만 있고 이점 없음
+```
+
 ### Record Accumulator — 배치 전송
 
 ```
@@ -193,13 +304,50 @@ linger.ms 설정 가이드:
 ### max.in.flight.requests.per.connection
 
 ```
-브로커 응답 없이 동시에 전송할 수 있는 배치 수 (기본값: 5)
+브로커로부터 응답(ack)을 받지 않은 상태에서 동시에 전송할 수 있는 배치(요청)의 최대 수
+기본값: 5
 
-멱등성 활성화 시: 최대 5까지 순서 보장 (Kafka가 내부적으로 시퀀스 재정렬)
-멱등성 비활성화 + retries > 0: 값 > 1이면 순서 역전 가능
-  → 배치 1 전송 실패, 배치 2 성공, 배치 1 재전송 → 순서 역전
-  → 순서 보장 필요하면 1로 설정 (처리량 감소)
+예시) 값이 3이면:
+  [배치1] → [배치2] → [배치3] → (응답 대기 중)
+   ↑ 이 3개가 모두 in-flight 상태 → 4번째는 응답 올 때까지 대기
+
+값이 클수록 처리량 증가, 값이 작을수록 순서 안정성 증가
 ```
+
+**멱등성 없을 때 순서 역전 문제 (retries > 0, 값 > 1)**
+```
+in-flight: [배치1(seq=1), 배치2(seq=2)]
+
+1. 배치1 전송 실패 (네트워크 오류)
+2. 배치2 성공 → 브로커에 seq=2 저장
+3. 배치1 재전송 성공 → 브로커에 seq=1 저장
+
+결과: 브로커 저장 순서 = seq=2, seq=1 → 순서 역전!
+→ 순서 보장이 필요하면 1로 설정해야 하지만, 처리량 감소
+```
+
+**멱등성 활성화 시 왜 ≤ 5인가?**
+```
+멱등성은 브로커가 in-flight 배치들을 버퍼에 들고 있다가
+시퀀스 번호 기준으로 내부 재정렬하여 순서를 보장함
+
+[배치1(seq=1), 배치2(seq=2), 배치3(seq=3)] → 동시 in-flight
+                     ↓
+        브로커가 seq 순서대로 재정렬해서 저장
+                     ↓
+              정확히 1번, 올바른 순서로 저장
+
+단, Kafka는 이 재정렬 버퍼를 최대 5개 윈도우까지만 지원
+→ 6 이상으로 설정 시 OutOfOrderSequenceException 발생, 멱등성 깨짐
+→ ≤ 5 로 설정해야 순서 보장 + 중복 제거 모두 유지 가능
+```
+
+| 설정 조합 | 결과 |
+|-----------|------|
+| 멱등성 OFF + 값 > 1 | 재시도 시 순서 역전 가능 |
+| 멱등성 OFF + 값 = 1 | 순서 보장, 처리량 저하 |
+| 멱등성 ON + 값 ≤ 5 | 순서 보장 + 처리량 유지 (권장) |
+| 멱등성 ON + 값 > 5 | OutOfOrderSequenceException, 멱등성 깨짐 |
 
 ### 파티션 선택 전략
 
