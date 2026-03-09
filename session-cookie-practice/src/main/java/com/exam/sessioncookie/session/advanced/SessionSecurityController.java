@@ -21,6 +21,7 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/session/security")
 @RequiredArgsConstructor
+@SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 public class SessionSecurityController {
 
     private final FindByIndexNameSessionRepository<? extends Session> sessionRepository;

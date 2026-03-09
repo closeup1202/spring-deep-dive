@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.session.FindByIndexNameSessionRepository;
-import org.springframework.session.Session;
+import org.springframework.session.data.redis.RedisIndexedSessionRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -21,9 +21,10 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/session/redis")
 @RequiredArgsConstructor
+@SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
 public class RedisSessionController {
 
-    private final FindByIndexNameSessionRepository<? extends Session> sessionRepository;
+    private final RedisIndexedSessionRepository sessionRepository;
     private final RedisTemplate<String, Object> redisTemplate;
 
     /**
@@ -53,7 +54,7 @@ public class RedisSessionController {
      */
     @GetMapping("/find-by-username/{username}")
     public Map<String, Object> findSessionsByUsername(@PathVariable String username) {
-        Map<String, ? extends Session> sessions = sessionRepository.findByPrincipalName(username);
+        Map<String, RedisIndexedSessionRepository.RedisSession> sessions = sessionRepository.findByPrincipalName(username);
 
         List<Map<String, Object>> sessionList = new ArrayList<>();
         sessions.forEach((sessionId, session) -> {
@@ -106,7 +107,7 @@ public class RedisSessionController {
      */
     @DeleteMapping("/revoke/{username}")
     public Map<String, Object> revokeAllUserSessions(@PathVariable String username) {
-        Map<String, ? extends Session> sessions = sessionRepository.findByPrincipalName(username);
+        Map<String, RedisIndexedSessionRepository.RedisSession> sessions = sessionRepository.findByPrincipalName(username);
 
         int revokedCount = 0;
         for (String sessionId : sessions.keySet()) {
@@ -127,7 +128,7 @@ public class RedisSessionController {
      */
     @PutMapping("/extend/{sessionId}")
     public Map<String, Object> extendSession(@PathVariable String sessionId, @RequestParam int seconds) {
-        Session session = sessionRepository.findById(sessionId);
+        RedisIndexedSessionRepository.RedisSession session = sessionRepository.findById(sessionId);
 
         if (session == null) {
             return Map.of("message", "세션을 찾을 수 없습니다.");
@@ -158,7 +159,7 @@ public class RedisSessionController {
         if (keys != null) {
             for (String key : keys) {
                 String sessionId = key.replace("spring:session:sessions:", "");
-                Session session = sessionRepository.findById(sessionId);
+                RedisIndexedSessionRepository.RedisSession session = sessionRepository.findById(sessionId);
                 if (session != null) {
                     String username = session.getAttribute(FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME);
                     if (username != null) {
