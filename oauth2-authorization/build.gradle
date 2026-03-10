@@ -1,0 +1,25 @@
+// 루트 build.gradle로부터 상속받는 것:
+//   - spring-boot plugin, dependency-management plugin
+//   - spring-boot-starter, spring-boot-starter-aop, spring-boot-starter-data-jpa
+//   - h2 (runtimeOnly), lombok, test dependencies
+
+dependencies {
+    // OAuth2 Authorization Server (Spring Security + Spring AS)
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-authorization-server'
+
+    // Web (for REST endpoints and filter chains)
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Jackson for JSON serialization (authorization/client settings)
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+}
+
+// 이 모듈은 실행 가능한 서버 → bootJar 활성화
+bootJar {
+    enabled = true
+    mainClass = 'com.exam.oauth2.OAuth2AuthorizationApplication'
+}
+
+jar {
+    enabled = false
+}

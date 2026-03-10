@@ -1,0 +1,48 @@
+server:
+  port: 9090
+
+spring:
+  application:
+    name: oauth2-authorization
+
+  # H2 in-memory DB (학습용 - 실무에서는 PostgreSQL + Redis 사용)
+  datasource:
+    url: jdbc:h2:mem:oauth2db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop    # 앱 시작 시 스키마 생성, 종료 시 삭제
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+# Authorization Server issuer URI (토큰의 iss 클레임에 사용)
+# 실무에서는 도메인으로 설정: https://auth.example.com
+oauth2:
+  issuer-uri: http://localhost:9090
+
+# 커스텀 인증 설정 (EPKI 패턴 시뮬레이션)
+auth:
+  login-endpoint: /oauth2/login           # 커스텀 로그인 엔드포인트
+  allowed-referer-prefix: http://localhost # 허용된 Referer 도메인 (빈 문자열이면 검증 스킵)
+
+# 토큰 설정
+token:
+  access-token-ttl-seconds: 3600         # 1시간
+  refresh-token-ttl-seconds: 86400       # 24시간
+
+logging:
+  level:
+    root: INFO
+    com.exam.oauth2: DEBUG
+    org.springframework.security: INFO
+    org.springframework.security.oauth2: DEBUG
