@@ -52,13 +52,21 @@ FK 주인 쪽에 @ManyToOne + @JoinColumn 선언
 
 ```java
 // FK 주인: RentBill (rent_bill 테이블에 contract_id 컬럼 존재)
-@ManyToOne(fetch = FetchType.LAZY)
-@JoinColumn(name = "contract_id")   // "나 FK 관리한다"
-private Contract contract;
+public class RentBill {
+    {...}
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "contract_id")   // "나 FK 관리한다"
+    private Contract contract;
+}
 
-// 거울: Contract (contract 테이블에 FK 컬럼 없음)
-@OneToMany(mappedBy = "contract")   // "RentBill.contract 필드가 FK 관리자야"
-private List<RentBill> rentBills = new ArrayList<>();
+// 거울: Contract (contract 테이블에 FK 컬럼 없음) / 여기는 읽기 전용 mirror side.
+public class Contract {
+    {...}
+    
+    @OneToMany(mappedBy = "contract")   // "RentBill.contract 필드가 FK 관리자야"
+    private List<RentBill> rentBills = new ArrayList<>();
+}
 ```
 
 `mappedBy` 값은 **FK를 가진 쪽 Entity의 필드명**이다.
