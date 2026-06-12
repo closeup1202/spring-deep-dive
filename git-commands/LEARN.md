@@ -251,6 +251,10 @@ git merge --abort
 # Squash 병합 (모든 커밋을 하나로)
 git merge --squash feature
 git commit -m "feat: add login feature"
+
+
+*Fast-forward라고 나오는 건 master에서 따로 새 커밋을 만든 적이 없어서, Git이 그냥 포인터만 앞으로 옮긴 상황
+
 ```
 
 **병합 전략**:
