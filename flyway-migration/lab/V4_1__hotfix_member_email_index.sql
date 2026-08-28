@@ -1,0 +1,13 @@
+-- ── STEPS 5단계: out-of-order 실습 파일 ────────────────────────────────
+-- 이미 V5 이상이 적용된 상태에서 이 파일을 db/migration 으로 복사한다.
+-- "동료가 V4 브랜치에서 급하게 핫픽스를 하나 만들어 나중에 머지했다" 상황이다.
+--
+-- 기본 설정(out-of-order: false)에서는:
+--   → Flyway 가 이 파일을 "Ignored" 로 표시하고 조용히 건너뛴다.
+--     ./gradlew flywayInfo 로 상태를 확인할 것. (조용한 게 제일 위험하다)
+--   → validate-on-migrate 때문에 부팅이 실패할 수도 있다.
+--
+-- spring.flyway.out-of-order: true 로 바꾸면:
+--   → 뒤늦게 적용되고 installed_rank 는 마지막, version 은 4.1 로 기록된다.
+--     즉 DB 마다 적용 순서가 달라진다. 운영에서 이 옵션을 끄는 이유.
+create unique index idx_member_email on member (email);

@@ -1,0 +1,66 @@
+// Flyway Gradle 플러그인은 애플리케이션 classpath 를 보지 않는다.
+// JDBC 드라이버와 DB 플러그인을 buildscript classpath 에 따로 올려줘야
+// ./gradlew :flyway-migration:flywayInfo 같은 태스크가 PostgreSQL 을 인식한다.
+// (안 올리면: "No Flyway database plugin found to handle jdbc:postgresql://...")
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.flywaydb:flyway-database-postgresql:10.20.1'
+        classpath 'org.postgresql:postgresql:42.7.4'
+    }
+}
+
+plugins {
+    // 앱 부팅과 무관하게 CLI 로 Flyway 를 다루기 위한 플러그인.
+    // flywayInfo / flywayValidate / flywayMigrate / flywayClean / flywayRepair
+    // 버전은 Boot 3.4.1 이 관리하는 flyway-core 버전(10.20.1)과 맞춘다.
+    id 'org.flywaydb.flyway' version '10.20.1'
+}
+
+// Boot 3.4.1 이 관리하는 Testcontainers 1.20.4 는 Docker Engine 29(API 1.53) 와 붙지 못한다.
+// 파이프에 연결은 되지만 /info 가 400 을 돌려주고 "Could not find a valid Docker environment" 로 끝난다.
+// io.spring.dependency-management 가 BOM 버전을 강제하므로, 명시적 버전 대신 이 프로퍼티로 올려야 한다.
+ext['testcontainers.version'] = '1.21.4'
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // 빈 DB 에 마이그레이션 전체를 재생해보는 스모크 테스트용
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+}
+
+// Gradle 플러그인이 사용할 Flyway 설정.
+//
+// ★ 이 설정은 application.yml 의 spring.flyway 와 완전히 별개다. ★
+// locations 가 어긋나면 CLI 와 앱이 같은 DB 를 두고 서로 다른 판단을 한다.
+// 특히 위험한 조합:
+//   앱은 db/seed 를 적용했는데 CLI 는 그 경로를 모른다
+//   → flywayValidate: "Detected applied migration not resolved locally: dev seed"
+//   → flywayRepair  : 이력에 DELETE 를 박아버린다 (= 다음 부팅 때 재실행)
+// 그래서 여기서도 프로필 개념을 그대로 흉내 낸다.
+//
+//   ./gradlew :flyway-migration:flywayInfo                      → local (seed 포함)
+//   ./gradlew :flyway-migration:flywayInfo -PflywayProfile=prod → prod  (seed 제외)
+def flywayProfile = findProperty('flywayProfile') ?: 'local'
+def flywayLocations = ['filesystem:' + projectDir + '/src/main/resources/db/migration',
+                       'filesystem:' + projectDir + '/src/main/resources/db/callback']
+if (flywayProfile == 'local') {
+    flywayLocations += 'filesystem:' + projectDir + '/src/main/resources/db/seed'
+}
+
+flyway {
+    url = 'jdbc:postgresql://localhost:5433/flyway_exam'
+    user = 'flyway'
+    password = 'flyway'
+    locations = flywayLocations
+    placeholders = ['app_name': 'flyway-migration']
+    cleanDisabled = false
+}

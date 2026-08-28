@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: flyway-migration
+
+  profiles:
+    # 실습은 기본적으로 local 프로필로 진행한다.
+    # 운영 환경을 흉내 낼 때는 --spring.profiles.active=prod 로 띄운다.
+    default: local
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/flyway_exam
+    username: flyway
+    password: flyway
+
+  jpa:
+    hibernate:
+      # ★ 이 모듈의 핵심 학습 장치 ★
+      # Hibernate 가 스키마를 만들지 않고 "검증만" 한다.
+      # 엔티티를 고치고 마이그레이션을 안 쓰면 부팅이 실패한다.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    # 마이그레이션 + 콜백 SQL 을 찾을 위치. 콤마로 여러 개 지정 가능.
+    # 프로필별로 이 목록을 바꿔서 "환경별 마이그레이션"을 실험한다.
+    locations: classpath:db/migration,classpath:db/callback
+    # 이미 테이블이 있는 DB 에 Flyway 를 처음 붙일 때 true 로 (STEPS 8단계)
+    baseline-on-migrate: false
+    baseline-version: 0
+    # 적용된 마이그레이션 파일의 checksum 을 매번 검사 (STEPS 2단계)
+    validate-on-migrate: true
+    # 이미 지나간 버전 번호를 뒤늦게 끼워 넣는 것을 허용할지 (STEPS 5단계)
+    out-of-order: false
+    # 운영에서는 반드시 true. local 프로필에서만 false 로 푼다.
+    clean-disabled: true
+    # 이력 테이블 이름 (기본값 flyway_schema_history)
+    table: flyway_schema_history
+    # SQL 안에서 ${app_name} 으로 치환된다
+    placeholders:
+      app_name: flyway-migration
+
+logging:
+  level:
+    # 어떤 파일을 스캔하고 무엇을 적용했는지 전부 찍어준다. 실습 내내 켜 두는 걸 권장.
+    org.flywaydb: debug

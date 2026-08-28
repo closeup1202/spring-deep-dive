@@ -1,0 +1,11 @@
+spring:
+  flyway:
+    # 운영을 흉내 내는 프로필. seed 를 읽지 않는다.
+    locations: classpath:db/migration,classpath:db/callback
+    clean-disabled: true
+    # 운영에서 out-of-order 를 켜면 배포 순서에 따라 DB 상태가 달라진다. 끄는 게 기본.
+    out-of-order: false
+
+logging:
+  level:
+    org.flywaydb: info

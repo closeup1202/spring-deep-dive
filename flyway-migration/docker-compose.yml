@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: flyway-migration-db
+    environment:
+      POSTGRES_DB: flyway_exam
+      POSTGRES_USER: flyway
+      POSTGRES_PASSWORD: flyway
+      TZ: Asia/Seoul
+    # 호스트 5433 → 컨테이너 5432.
+    # 로컬에 이미 PostgreSQL 이 떠 있어도 충돌하지 않게 5433 을 쓴다.
+    ports:
+      - "5433:5432"
+    volumes:
+      - flyway-migration-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flyway -d flyway_exam"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    command: ["postgres", "-c", "client_min_messages=notice"]
+    # 참고: afterMigrate 콜백의 raise notice 는 서버 로그가 아니라 클라이언트로 간다.
+    #       postgres 컨테이너 로그가 아니라 앱 로그에서 `DB: [flyway-migration] afterMigrate...` 로 확인할 것.
+
+volumes:
+  flyway-migration-data:
