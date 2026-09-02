@@ -255,6 +255,35 @@ git commit -m "feat: add login feature"
 
 *Fast-forward라고 나오는 건 master에서 따로 새 커밋을 만든 적이 없어서, Git이 그냥 포인터만 앞으로 옮긴 상황
 
+# --ff-only
+• --ff-only는 불필요한 Merge Commit을 만들지 말고, 단순히 브랜치 포인터만 앞으로 이동할 수 있을 때만 Merge하라는 의미
+
+  예를 들어:
+
+  dev:     A ─ B
+  feature:       └─ C ─ D
+
+  이 상태에서:
+
+  git merge --ff-only feature/data-sync-test-ui
+  를 실행하면:
+
+  dev:     A ─ B ─ C ─ D
+
+  처럼 DEV가 feature의 최신 커밋까지 그대로 이동
+
+  반대로 DEV와 feature가 서로 따로 커밋을 가지고 있으면:
+
+          C ─ D  feature
+         /
+  A ─ B
+         \
+          E ─ F  dev
+
+  이때는 단순 이동이 불가능하므로 --ff-only가 Merge를 중단합니다. 자동으로 복잡한 Merge Commit을 만들지 않아 안전하게 상태를 확인할 수 있음
+
+  즉, “깔끔하게 이어붙일 수 있을 때만 병합하고, 충돌 가능성이 있으면 멈춰라”라는 뜻
+
 ```
 
 **병합 전략**:
