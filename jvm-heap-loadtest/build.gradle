@@ -1,0 +1,120 @@
+// 루트 build.gradle 로부터 상속받는 것:
+//   - spring-boot / dependency-management 플러그인
+//   - spring-boot-starter, starter-aop, starter-data-jpa, h2, lombok, test
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // 힙/GC/스레드풀 지표를 눈으로 보기 위한 최소 구성
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+}
+
+// 실행 가능한 모듈
+bootJar {
+    enabled = true
+    mainClass = 'com.exam.jvmheap.JvmHeapLoadTestApplication'
+}
+
+jar {
+    enabled = false
+}
+
+// ---------------------------------------------------------------------------
+// JVM 옵션 프리셋
+//
+// 이 모듈의 실습은 "어떤 JVM 옵션으로 띄웠는가" 가 전부다.
+// 매번 긴 옵션을 손으로 치지 않도록 프리셋으로 묶어둔다.
+//
+//   ./gradlew :jvm-heap-loadtest:bootRun                      → default (256m, G1)
+//   ./gradlew :jvm-heap-loadtest:bootRun -Pjvm=tiny           → 64m  (OOM 재현용)
+//   ./gradlew :jvm-heap-loadtest:bootRun -Pjvm=serial         → 64m  + SerialGC
+//   ./gradlew :jvm-heap-loadtest:bootRun -Pjvm=parallel       → 512m + ParallelGC
+//   ./gradlew :jvm-heap-loadtest:bootRun -Pjvm=zgc            → 512m + ZGC (Java 17 은 non-generational)
+//   ./gradlew :jvm-heap-loadtest:bootRun -Pjvm=container      → MaxRAMPercentage 방식
+//   ./gradlew :jvm-heap-loadtest:bootRun -Pjvm="-Xmx128m ..." → 직접 지정
+//
+// GC 로그는 build/gc-<preset>.log, 힙덤프는 build/heapdump-<preset>.hprof 로 떨어진다.
+// ---------------------------------------------------------------------------
+def gcLogDir = "${projectDir}/build"
+
+def presets = [
+        // 기본값. 힙이 작아야 GC 가 자주 돌고 관찰이 쉽다.
+        'default'  : ['-Xms256m', '-Xmx256m', '-XX:+UseG1GC'],
+
+        // 누수 실습용. 몇 번만 때려도 OOM 이 난다.
+        'tiny'     : ['-Xms64m', '-Xmx64m', '-XX:+UseG1GC'],
+
+        // 단일 스레드 GC. Stop-The-World 가 길어 pause 차이가 육안으로 보인다.
+        'serial'   : ['-Xms64m', '-Xmx64m', '-XX:+UseSerialGC'],
+
+        // 처리량 우선 GC. TPS 는 높고 pause 는 길다.
+        'parallel' : ['-Xms512m', '-Xmx512m', '-XX:+UseParallelGC'],
+
+        // 지연 우선 GC. Java 17 에서는 non-generational 이라 힙이 작으면 오히려 불리하다.
+        'zgc'      : ['-Xms512m', '-Xmx512m', '-XX:+UseZGC'],
+
+        // 컨테이너에서 실제로 쓰는 형태. -Xmx 를 박지 않고 비율로 맡긴다.
+        'container': ['-XX:MaxRAMPercentage=70.0', '-XX:InitialRAMPercentage=70.0', '-XX:+UseG1GC'],
+]
+
+// 모든 프리셋에 공통으로 붙는 관측 옵션
+def observability = { String name ->
+    [
+            "-Xlog:gc*,gc+heap=debug,safepoint:file=${gcLogDir}/gc-${name}.log:time,uptime,level,tags:filecount=5,filesize=10m",
+            '-XX:+HeapDumpOnOutOfMemoryError',
+            "-XX:HeapDumpPath=${gcLogDir}/heapdump-${name}.hprof",
+            // Tomcat 스레드 수를 줄여 스레드 고갈을 관찰 가능한 규모로 만든다
+            '-Dserver.tomcat.threads.max=20',
+    ]
+}
+
+bootRun {
+    def requested = (findProperty('jvm') ?: 'default').toString()
+    def name = presets.containsKey(requested) ? requested : 'custom'
+    def base = presets.containsKey(requested) ? presets[requested] : requested.tokenize(' ')
+
+    jvmArgs = base + observability(name)
+
+    doFirst {
+        new File(gcLogDir).mkdirs()
+        println "[jvm-heap-loadtest] preset=${name}"
+        println "[jvm-heap-loadtest] jvmArgs=${jvmArgs.join(' ')}"
+    }
+}
+
+// 부하 테스트는 일반 test 태스크에서 제외한다 (느리고, 로컬 머신 상태에 좌우된다).
+//   ./gradlew :jvm-heap-loadtest:test         → 단위 테스트만
+//   ./gradlew :jvm-heap-loadtest:loadTest     → 부하 시나리오 포함
+test {
+    useJUnitPlatform {
+        excludeTags 'load'
+    }
+    // 힙 관련 단위 테스트는 힙 크기를 고정해야 결과가 재현된다.
+    // (기본값은 머신 메모리의 1/4 라서 CI 와 로컬이 다르게 동작한다)
+    maxHeapSize = '512m'
+    jvmArgs '-XX:+UseG1GC'
+    testLogging {
+        showStandardStreams = true
+    }
+}
+
+tasks.register('loadTest', Test) {
+    group = 'verification'
+    description = '내장 부하 생성기로 시나리오를 돌린다 (@Tag("load"))'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'load'
+    }
+    // 부하 테스트도 힙을 좁게 잡아야 GC 가 보인다.
+    // GC 로그는 build/gc-loadtest.log 로 떨어진다.
+    maxHeapSize = '512m'
+    jvmArgs '-XX:+UseG1GC',
+            "-Xlog:gc:file=${projectDir}/build/gc-loadtest.log:time,uptime"
+
+    testLogging {
+        showStandardStreams = true
+    }
+    outputs.upToDateWhen { false }
+}
